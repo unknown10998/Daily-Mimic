@@ -212,8 +212,8 @@ export const DailyInvestigationView = () => {
       ) : null}
 
       {submitSummary ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#101418]/70 px-4 py-8 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-sm border-4 border-[#101418] bg-white p-7 shadow-[10px_10px_0_#101418]">
+        <div className="mimic-popup-overlay fixed inset-0 z-50 flex items-center justify-center bg-[#101418]/70 px-4 py-8 backdrop-blur-sm">
+          <div className="mimic-popup-card mimic-popup-content w-full max-w-2xl rounded-sm border-4 border-[#101418] bg-white p-7 shadow-[10px_10px_0_#101418]">
             <div className="flex items-start justify-between gap-5">
               <div>
                 <p className="text-xs font-black uppercase text-[#ef5b4f]">Investigation results</p>

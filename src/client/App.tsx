@@ -14,6 +14,7 @@ import { Button } from './components/ui/Button';
 import { Skeleton } from './components/ui/Skeleton';
 import { Modal } from './components/ui/Modal';
 import { formatDisplayDate } from './utils/date';
+import { applyDocumentTheme, getInitialDarkTheme, watchPreferredTheme } from './utils/theme';
 
 const pages = [
   { key: 'home', label: 'Home' },
@@ -183,7 +184,7 @@ export const App = () => {
   const [debugging, setDebugging] = useState(false);
   const [checkingHealth, setCheckingHealth] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [darkTheme, setDarkTheme] = useState(() => localStorage.getItem('mimic-theme') === 'dark');
+  const [darkTheme, setDarkTheme] = useState(getInitialDarkTheme);
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('mimic-sound') !== 'off');
   const [debugToasts, setDebugToasts] = useState(() => localStorage.getItem('mimic-debug-toasts') !== 'off');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -195,8 +196,11 @@ export const App = () => {
   const currentTourStep = tourSteps[tourIndex];
 
   useEffect(() => {
+    applyDocumentTheme(darkTheme);
     localStorage.setItem('mimic-theme', darkTheme ? 'dark' : 'light');
   }, [darkTheme]);
+
+  useEffect(() => watchPreferredTheme(setDarkTheme), []);
 
   useEffect(() => {
     localStorage.setItem('mimic-sound', soundEnabled ? 'on' : 'off');
@@ -572,9 +576,9 @@ export const App = () => {
         </nav>
 
         {mobileNavOpen ? (
-          <div className="fixed inset-0 z-[60] overflow-hidden bg-[#101418]/60 backdrop-blur-sm lg:hidden" onClick={() => setMobileNavOpen(false)}>
+          <div className="mimic-popup-overlay fixed inset-0 z-[60] overflow-hidden bg-[#101418]/60 backdrop-blur-sm lg:hidden" onClick={() => setMobileNavOpen(false)}>
             <aside
-              className="h-svh max-h-svh w-[min(84vw,340px)] overflow-hidden border-r-4 border-[#101418] bg-[#fbfcf8] p-3 shadow-[10px_0_0_#101418]"
+              className="mimic-drawer-card mimic-popup-content h-svh max-h-svh w-[min(84vw,340px)] overflow-hidden border-r-4 border-[#101418] bg-[#fbfcf8] p-3 shadow-[10px_0_0_#101418]"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3">
@@ -691,10 +695,10 @@ export const App = () => {
 
       {tourActive && currentTourStep ? (
         <>
-          <div className="fixed inset-0 z-40 hidden bg-[#101418]/60 backdrop-blur-[1px] sm:block" />
+          <div className="mimic-popup-overlay fixed inset-0 z-40 hidden bg-[#101418]/60 backdrop-blur-[1px] sm:block" />
           {tourHighlightRect ? (
             <div
-              className="pointer-events-none fixed z-[55] animate-pulse rounded-sm border-4 border-[#fff9df] shadow-[0_0_0_4px_#101418,6px_6px_0_#ef5b4f]"
+              className="mimic-tour-highlight pointer-events-none fixed z-[55] animate-pulse rounded-sm border-4 border-[#fff9df] shadow-[0_0_0_4px_#101418,6px_6px_0_#ef5b4f]"
               style={{
                 top: tourHighlightRect.top,
                 left: tourHighlightRect.left,
@@ -706,7 +710,7 @@ export const App = () => {
           ) : null}
           {tourConnector ? (
             <div
-              className="pointer-events-none fixed z-[56] h-1 origin-left rounded-full bg-[#fff9df] shadow-[0_0_0_2px_#101418]"
+              className="mimic-tour-connector pointer-events-none fixed z-[56] h-1 origin-left rounded-full bg-[#fff9df] shadow-[0_0_0_2px_#101418]"
               style={{
                 top: tourConnector.top,
                 left: tourConnector.left,
@@ -719,7 +723,7 @@ export const App = () => {
             </div>
           ) : null}
           <div className={tourPanelClass[currentTourStep.placement]}>
-            <div data-tour-popup="true" className="mimic-tour-card relative max-h-[58svh] overflow-y-auto rounded-sm border-4 border-[#101418] bg-white p-3 shadow-[4px_4px_0_#101418] sm:max-h-[calc(100vh-7rem)] sm:p-5 sm:shadow-[9px_9px_0_#101418]">
+            <div data-tour-popup="true" className="mimic-popup-card mimic-popup-content mimic-tour-card relative max-h-[58svh] overflow-y-auto rounded-sm border-4 border-[#101418] bg-white p-3 shadow-[4px_4px_0_#101418] sm:max-h-[calc(100vh-7rem)] sm:p-5 sm:shadow-[9px_9px_0_#101418]">
               <span
                 className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 text-5xl font-black leading-none text-[#fff9df] [text-shadow:4px_4px_0_#101418] sm:hidden"
                 aria-hidden="true"

@@ -31,6 +31,11 @@ body {
   color-scheme: dark;
   background: #101418;
   color: #f4f7f8;
+  --border: #05080b;
+  --surface: #172028;
+  --ink: #f4f7f8;
+  --paper: #172028;
+  --muted: #b8c3cb;
 }
 
 .mimic-dark [class*="bg-[#e9eef1]"] {
@@ -80,6 +85,14 @@ textarea {
   font: inherit;
 }
 
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
 ::selection {
   background: #00a7a5;
   color: #fff;
@@ -108,4 +121,253 @@ textarea {
 
 .mimic-tour-card {
   transform: rotate(-0.45deg);
+}
+
+.mimic-popup-overlay {
+  animation: mimicOverlayIn 220ms ease both;
+}
+
+.mimic-popup-card {
+  position: relative;
+  animation: mimicPopupIn 340ms cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
+  transform-origin: center bottom;
+}
+
+.mimic-popup-card::before,
+.mimic-drawer-card::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  opacity: 0;
+  background: linear-gradient(135deg, transparent 0%, rgb(255 249 223 / 0.55) 46%, transparent 58%);
+  animation: mimicPopupGlint 520ms ease-out 90ms both;
+}
+
+.mimic-popup-content > * {
+  animation: mimicPopupContentIn 300ms ease-out both;
+  animation-delay: 120ms;
+}
+
+.mimic-tour-card {
+  animation-name: mimicTourPopupIn;
+}
+
+.mimic-tour-highlight {
+  animation: mimicTourHighlightIn 260ms ease-out both, pulse 2s cubic-bezier(0.4, 0, 0.6, 1) 260ms infinite;
+}
+
+.mimic-tour-connector {
+  animation: mimicTourConnectorIn 220ms ease-out both;
+}
+
+.mimic-drawer-card {
+  position: relative;
+  animation: mimicDrawerIn 220ms cubic-bezier(0.18, 0.89, 0.32, 1.12) both;
+}
+
+.mimic-toast-card {
+  animation: mimicToastIn 240ms ease-out both;
+}
+
+.mimic-fade-in {
+  animation: mimicFadeIn 700ms ease both;
+}
+
+.mimic-fade-in-delay-1 {
+  animation-delay: 110ms;
+}
+
+.mimic-fade-in-delay-2 {
+  animation-delay: 220ms;
+}
+
+.mimic-fade-in-delay-3 {
+  animation-delay: 330ms;
+}
+
+.mimic-glint {
+  position: relative;
+  overflow: hidden;
+}
+
+.mimic-glint::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  opacity: 0;
+  transform: translate(130%, 130%) rotate(18deg);
+  background: linear-gradient(115deg, transparent 0%, rgb(255 255 255 / 0.06) 38%, rgb(255 255 255 / 0.34) 50%, rgb(255 255 255 / 0.06) 62%, transparent 100%);
+  animation: mimicGlint 1.8s ease-in-out infinite;
+}
+
+.mimic-dark .mimic-glint::after {
+  background: linear-gradient(115deg, transparent 0%, rgb(255 255 255 / 0.03) 38%, rgb(255 255 255 / 0.14) 50%, rgb(255 255 255 / 0.03) 62%, transparent 100%);
+}
+
+@keyframes mimicFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes mimicOverlayIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes mimicPopupIn {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.9) rotate(-1.2deg);
+  }
+
+  68% {
+    opacity: 1;
+    transform: translateY(-5px) scale(1.025) rotate(0.45deg);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+}
+
+@keyframes mimicTourPopupIn {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.9) rotate(-2deg);
+  }
+
+  68% {
+    opacity: 1;
+    transform: translateY(-5px) scale(1.025) rotate(0.2deg);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(-0.45deg);
+  }
+}
+
+@keyframes mimicTourHighlightIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes mimicTourConnectorIn {
+  from {
+    opacity: 0;
+    scale: 0 1;
+  }
+
+  to {
+    opacity: 1;
+    scale: 1 1;
+  }
+}
+
+@keyframes mimicPopupGlint {
+  0% {
+    opacity: 0;
+    transform: translate(90%, 90%) rotate(0deg);
+  }
+
+  35% {
+    opacity: 0.8;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-90%, -90%) rotate(0deg);
+  }
+}
+
+@keyframes mimicPopupContentIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes mimicDrawerIn {
+  from {
+    opacity: 0;
+    transform: translateX(-42px) rotate(-0.6deg);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) rotate(0deg);
+  }
+}
+
+@keyframes mimicToastIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 14px) scale(0.96);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes mimicGlint {
+  0% {
+    opacity: 0;
+    transform: translate(130%, 130%) rotate(18deg);
+  }
+
+  18% {
+    opacity: 0.75;
+  }
+
+  58% {
+    opacity: 0.75;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-130%, -130%) rotate(18deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mimic-popup-overlay,
+  .mimic-popup-card,
+  .mimic-tour-highlight,
+  .mimic-tour-connector,
+  .mimic-drawer-card,
+  .mimic-popup-card::before,
+  .mimic-drawer-card::before,
+  .mimic-popup-content > *,
+  .mimic-toast-card,
+  .mimic-fade-in,
+  .mimic-glint::after {
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
+  }
 }
