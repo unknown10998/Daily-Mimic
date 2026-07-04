@@ -157,6 +157,14 @@ button:disabled {
   animation: mimicTourHighlightIn 260ms ease-out both, pulse 2s cubic-bezier(0.4, 0, 0.6, 1) 260ms infinite;
 }
 
+.mimic-tour-active-target {
+  position: relative;
+  z-index: 54;
+  isolation: isolate;
+  animation: mimicTourTargetForward 260ms ease-out both;
+}
+
+
 .mimic-tour-connector {
   animation: mimicTourConnectorIn 220ms ease-out both;
 }
@@ -273,6 +281,19 @@ button:disabled {
   }
 }
 
+@keyframes mimicTourTargetForward {
+  from {
+    filter: saturate(0.92) brightness(0.96);
+    transform: translateY(4px) scale(0.99);
+  }
+
+  to {
+    filter: saturate(1.05) brightness(1.03);
+    transform: translateY(0) scale(1);
+  }
+}
+
+
 @keyframes mimicTourConnectorIn {
   from {
     opacity: 0;
@@ -359,6 +380,7 @@ button:disabled {
   .mimic-popup-overlay,
   .mimic-popup-card,
   .mimic-tour-highlight,
+  .mimic-tour-active-target,
   .mimic-tour-connector,
   .mimic-drawer-card,
   .mimic-popup-card::before,

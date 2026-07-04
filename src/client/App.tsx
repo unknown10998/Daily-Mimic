@@ -251,6 +251,29 @@ export const App = () => {
   }, [mobileNavOpen]);
 
   useEffect(() => {
+    if (!tourActive) return undefined;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const preventTourScroll = (event: Event) => event.preventDefault();
+    const timer = window.setTimeout(() => {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    }, 520);
+
+    document.addEventListener('wheel', preventTourScroll, { passive: false });
+    document.addEventListener('touchmove', preventTourScroll, { passive: false });
+
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('wheel', preventTourScroll);
+      document.removeEventListener('touchmove', preventTourScroll);
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [currentTourStep, tourActive]);
+
+  useEffect(() => {
     if (!sessionLoading && session?.registered === true && localStorage.getItem('mimic-tour-seen') !== 'true') {
       const timer = window.setTimeout(() => {
         setTourIndex(0);
@@ -269,12 +292,49 @@ export const App = () => {
       const isMobile = window.matchMedia('(max-width: 639px)').matches;
       if (!isMobile) return;
 
-      const target = document.querySelector(`[data-tour-page="${currentTourStep.page}"]`);
-      const top = target instanceof HTMLElement ? target.getBoundingClientRect().top + window.scrollY - 72 : 0;
+      const targetName = currentTourStep.target === 'nav-tools' ? 'mobile-menu-button' : currentTourStep.target;
+      const target = document.querySelector(`[data-tour-target="${targetName}"]`);
+      const fallback = document.querySelector(`[data-tour-page="${currentTourStep.page}"]`);
+      const scrollTarget = target instanceof HTMLElement ? target : fallback;
+      const top = scrollTarget instanceof HTMLElement ? scrollTarget.getBoundingClientRect().top + window.scrollY - 88 : 0;
       window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
-    }, 260);
+    }, 220);
 
     return () => window.clearTimeout(timer);
+  }, [currentTourStep, tourActive]);
+
+  useEffect(() => {
+    const clearActiveTargets = () => {
+      document.querySelectorAll('.mimic-tour-active-target').forEach((element) => {
+        element.classList.remove('mimic-tour-active-target');
+        element.removeAttribute('data-tour-active');
+      });
+    };
+
+    if (!tourActive || !currentTourStep) {
+      clearActiveTargets();
+      return undefined;
+    }
+
+    const updateActiveTarget = () => {
+      clearActiveTargets();
+      const isMobile = window.matchMedia('(max-width: 639px)').matches;
+      const targetName = currentTourStep.target === 'nav-tools' && isMobile ? 'mobile-menu-button' : currentTourStep.target;
+      const target = document.querySelector(`[data-tour-target="${targetName}"]`);
+
+      if (target instanceof HTMLElement) {
+        target.classList.add('mimic-tour-active-target');
+        target.setAttribute('data-tour-active', 'true');
+      }
+    };
+
+    updateActiveTarget();
+    window.addEventListener('resize', updateActiveTarget);
+
+    return () => {
+      window.removeEventListener('resize', updateActiveTarget);
+      clearActiveTargets();
+    };
   }, [currentTourStep, tourActive]);
 
   useEffect(() => {
@@ -300,14 +360,12 @@ export const App = () => {
         return;
       }
 
-      const inset = 8;
-      const maxHeight = currentTourStep.target === 'nav-tools' ? rect.height : isMobile ? 190 : 260;
-      const top = Math.max(8, rect.top - inset);
-      const left = Math.max(8, rect.left - inset);
-      const width = Math.min(window.innerWidth - left - 8, rect.width + inset * 2);
-      const height = Math.min(window.innerHeight - top - 8, Math.min(rect.height, maxHeight) + inset * 2);
-
-      const highlightRect = { top, left, width, height };
+      const highlightRect = {
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      };
       setTourHighlightRect(highlightRect);
 
       const popup = document.querySelector('[data-tour-popup="true"]');
@@ -333,12 +391,23 @@ export const App = () => {
       });
     };
 
-    const timer = window.setTimeout(updateHighlight, 320);
+    const firstTimer = window.setTimeout(updateHighlight, 280);
+    const secondTimer = window.setTimeout(updateHighlight, 620);
+    const targetName = currentTourStep.target === 'nav-tools' && window.matchMedia('(max-width: 639px)').matches ? 'mobile-menu-button' : currentTourStep.target;
+    const observedTarget = document.querySelector(`[data-tour-target="${targetName}"]`);
+    const resizeObserver = observedTarget instanceof HTMLElement ? new ResizeObserver(updateHighlight) : null;
+
+    if (observedTarget instanceof HTMLElement) {
+      resizeObserver?.observe(observedTarget);
+    }
+
     window.addEventListener('resize', updateHighlight);
     window.addEventListener('scroll', updateHighlight, true);
 
     return () => {
-      window.clearTimeout(timer);
+      window.clearTimeout(firstTimer);
+      window.clearTimeout(secondTimer);
+      resizeObserver?.disconnect();
       window.removeEventListener('resize', updateHighlight);
       window.removeEventListener('scroll', updateHighlight, true);
     };
@@ -695,10 +764,10 @@ export const App = () => {
 
       {tourActive && currentTourStep ? (
         <>
-          <div className="mimic-popup-overlay fixed inset-0 z-40 hidden bg-[#101418]/60 backdrop-blur-[1px] sm:block" />
+          <div className="mimic-popup-overlay fixed inset-0 z-40 bg-[#101418]/60 backdrop-blur-[1px]" />
           {tourHighlightRect ? (
             <div
-              className="mimic-tour-highlight pointer-events-none fixed z-[55] animate-pulse rounded-sm border-4 border-[#fff9df] shadow-[0_0_0_4px_#101418,6px_6px_0_#ef5b4f]"
+              className="mimic-tour-highlight pointer-events-none fixed z-[55] hidden animate-pulse rounded-sm border-4 border-[#fff9df] shadow-[0_0_0_4px_#101418,6px_6px_0_#ef5b4f] sm:block"
               style={{
                 top: tourHighlightRect.top,
                 left: tourHighlightRect.left,
@@ -710,7 +779,7 @@ export const App = () => {
           ) : null}
           {tourConnector ? (
             <div
-              className="mimic-tour-connector pointer-events-none fixed z-[56] h-1 origin-left rounded-full bg-[#fff9df] shadow-[0_0_0_2px_#101418]"
+              className="mimic-tour-connector pointer-events-none fixed z-[56] hidden h-1 origin-left rounded-full bg-[#fff9df] shadow-[0_0_0_2px_#101418] sm:block"
               style={{
                 top: tourConnector.top,
                 left: tourConnector.left,
