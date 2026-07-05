@@ -146,7 +146,7 @@ export const QuestionScreen = ({ refreshKey }: QuestionScreenProps) => {
               value={answer}
               onChange={(event) => setAnswer(event.target.value)}
               rows={8}
-              maxLength={800}
+              maxLength={1000}
               placeholder="Write a real answer with enough detail that tomorrow’s voters have something to judge."
               className="w-full resize-none rounded-sm border-2 border-[#101418] bg-white px-4 py-4 text-base font-semibold leading-7 text-[#101418] outline-none transition focus:bg-[#f3fffd] focus:shadow-[4px_4px_0_#00a7a5]"
             />

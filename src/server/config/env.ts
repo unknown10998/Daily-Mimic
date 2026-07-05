@@ -50,7 +50,7 @@ const getOptionalEnv = (keys: string[], fallback: string): EnvLookup => {
 };
 
 const geminiApiKey = getOptionalEnv(['GOOGLE_GEMINI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_KEY'], 'your_google_gemini_api_key_here');
-const geminiModel = getOptionalEnv(['GOOGLE_GEMINI_MODEL', 'GEMINI_MODEL'], 'gemini-1.5-pro');
+const geminiModel = getOptionalEnv(['GOOGLE_GEMINI_MODEL', 'GEMINI_MODEL'], 'gemini-2.5-flash');
 
 export const env: EnvConfig = {
   googleGeminiApiKey: geminiApiKey.value,

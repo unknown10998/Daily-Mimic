@@ -50,6 +50,9 @@ const callGemini = async (prompt: string): Promise<GeminiGenerationResult> => {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         maxOutputTokens: 768,
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
       },
     }),
   });
@@ -226,6 +229,47 @@ Return only the anonymous answer text.`;
     }
   },
 
+
+  generateHybridAnswer: async (questionText: string, humanAnswers: string[], aiAnswer: string, aiBlendPercent: number): Promise<string> => {
+    const sourceAnswers = humanAnswers.map((answer, index) => `Human answer ${index + 1}:\n${answer}`).join('\n\n');
+    const prompt = `You create HYBRID answers for Mimic, a daily Reddit game.
+
+Your job is to parse exact details from real human answers and blend them with an AI-written answer.
+
+Daily question:
+${questionText}
+
+AI blend target: ${aiBlendPercent}% AI and ${100 - aiBlendPercent}% human.
+
+Human source answers:
+${sourceAnswers}
+
+AI source answer:
+${aiAnswer}
+
+Rules:
+- Return one answer to the daily question.
+- Preserve and reuse several exact nouns, images, or tiny phrases from the human source answers.
+- Do not copy a full human answer.
+- Do not mention that this is hybrid or AI.
+- Make it feel like one person wrote it.
+- Keep it between 250 and 1000 characters.
+- Include enough specific detail for voters to judge.
+- After writing the answer, do one final punctuation-only cleanup pass.
+- In that cleanup pass, only fix punctuation and spacing around punctuation.
+- Do not change words, sentence order, details, tone, or copied human phrases during punctuation cleanup.
+
+Return only the hybrid answer text.`;
+
+    try {
+      const result = await callGemini(prompt);
+      return cleanGeneratedAnswer(result.text) || buildFallbackHybridAnswer(questionText, humanAnswers, aiAnswer, aiBlendPercent);
+    } catch (error) {
+      console.error(error);
+      return buildFallbackHybridAnswer(questionText, humanAnswers, aiAnswer, aiBlendPercent);
+    }
+  },
+
   generateEvolutionLesson: async (questionText: string, summary: string, humanPatterns: string[], aiStyle: AIStyle): Promise<string> => {
     const prompt = `You are the learning engine for Mimic, a daily game where players guess which anonymous answers are human and which are AI.
 
@@ -247,6 +291,7 @@ Include:
 - 2 concrete human patterns that should be copied
 - 2 AI tells or weaknesses that should be avoided
 - 2 specific tactics for tomorrow's answer
+- any hybrid-answer or AI-blend clues from the summary, converted into actionable guidance
 - any player AI-feedback clues from the summary, converted into actionable guidance
 
 Do not be vague. Use direct instructions like "use one imperfect aside" or "avoid symmetrical paragraph structure."
@@ -425,6 +470,26 @@ const buildFallbackAnswer = (questionText: string): string => {
   const cleanedQuestion = questionText.replace(/\?+$/u, '').toLowerCase();
   return `For me, ${cleanedQuestion || 'the honest answer'} would come down to one ordinary moment I can still picture. I would probably mention standing in the kitchen with my phone face down, hearing the refrigerator click on, and realizing I was avoiding a reply because I already knew what I wanted to say. It is not dramatic, but that is why it feels real to me: the answer lives in the tiny delay, the room, and the uncomfortable little reason behind it.`;
 };
+
+
+const cleanPunctuationSpacingOnly = (text: string): string => text
+  .replace(/\s+([,.!?;:])/gu, '$1')
+  .replace(/([,.!?;:])(?=\S)/gu, '$1 ')
+  .replace(/\s{2,}/gu, ' ')
+  .trim();
+
+
+const buildFallbackHybridAnswer = (questionText: string, humanAnswers: string[], aiAnswer: string, aiBlendPercent: number): string => {
+  const cleanedQuestion = questionText.replace(/\?+$/u, '').toLowerCase();
+  const humanSnippets = humanAnswers
+    .flatMap((answer) => answer.split(/[.!?]/u).map((part) => part.trim()).filter((part) => part.length > 24))
+    .slice(0, 3);
+  const aiSentence = aiAnswer.split(/[.!?]/u).map((part) => part.trim()).find((part) => part.length > 24) ?? 'I would answer it through one small, specific moment instead of a big explanation';
+  const details = humanSnippets.length > 0 ? humanSnippets.join(', and ') : 'one ordinary detail, a half-remembered feeling, and a small reason I would actually say out loud';
+
+  return cleanPunctuationSpacingOnly(`For me, ${cleanedQuestion || 'this prompt'} would probably land somewhere between ${details}. ${aiSentence}. If I had to make it honest, I would not make it too clean: I would leave in the little pause where I am not totally sure why that detail stuck. The answer feels ${aiBlendPercent}% polished and ${100 - aiBlendPercent}% like something I would type quickly, then reread once and decide to leave alone.`);
+};
+
 
 const buildFallbackEvolutionLesson = (): string => {
   return 'Human answers leaned on specific memories, imperfect phrasing, and sensory details. AI answers sounded smoother and more balanced. Tomorrow, use one concrete scene, one small uncertainty, and fewer polished transitions.';

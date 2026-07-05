@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import { currentDateIso, sanitizeText } from '../utils/text';
+import { currentDateIso, nextUtcMidnightIso, sanitizeText } from '../utils/text';
 import { redisStorage } from './redisStorage';
 import type { AchievementDefinition, AchievementDisplay, AIEvolution, AIStyle, Answer, DailyStatistics, GameState, LevelProgress, PlayerProfile, Question, Streak, Vote } from '../types/game';
 
@@ -160,8 +160,8 @@ export const gameEngine = {
       text: text.trim(),
       date,
       createdAt: now,
-      activeFrom: now,
-      activeUntil: new Date(Date.now() + DEFAULT_PHASES.answerDurationMinutes * 60 * 1000).toISOString(),
+      activeFrom: `${date}T00:00:00.000Z`,
+      activeUntil: nextUtcMidnightIso(date),
       isPublished: true,
       generatedByAIEvolution,
       sourceHint: aiStyle ? `AI style: ${aiStyle.name}` : undefined,
@@ -177,7 +177,7 @@ export const gameEngine = {
       authorType,
       text: text.trim(),
       submittedAt,
-      source: authorType === 'human' ? 'user' : 'gemini',
+      source: authorType === 'human' ? 'user' : authorType === 'hybrid' ? 'hybrid' : 'gemini',
       markers: {
         length: text.length,
         hasUrls: /https?:\/\//.test(text),
@@ -220,9 +220,9 @@ export const gameEngine = {
     return {
       phase: 'answering',
       activeDate: today,
-      nextRolloverAt: new Date(Date.now() + gameEngine.answerDurationMs() + gameEngine.votingDurationMs()).toISOString(),
-      answerDeadlineAt: new Date(Date.now() + gameEngine.answerDurationMs()).toISOString(),
-      votingDeadlineAt: new Date(Date.now() + gameEngine.answerDurationMs() + gameEngine.votingDurationMs()).toISOString(),
+      nextRolloverAt: nextUtcMidnightIso(today),
+      answerDeadlineAt: nextUtcMidnightIso(today),
+      votingDeadlineAt: nextUtcMidnightIso(today),
       questionIds: [],
     };
   },
@@ -317,6 +317,11 @@ export const gameEngine = {
     const totalAnswers = answers.length;
     const totalVotes = votes.length;
     const accuracy = totalVotes === 0 ? 0 : votes.filter((vote) => vote.isCorrect).length / totalVotes;
+    const answerById = new Map(answers.map((answer) => [answer.id, answer]));
+    const detectionRateFor = (authorType: Answer['authorType']): number => {
+      const typeVotes = votes.filter((vote) => answerById.get(vote.answerId)?.authorType === authorType);
+      return typeVotes.length === 0 ? 0 : typeVotes.filter((vote) => vote.isCorrect).length / typeVotes.length;
+    };
 
     const mostBelievableHuman = answers
       .filter((answer) => answer.authorType === 'human')
@@ -332,9 +337,9 @@ export const gameEngine = {
       totalAnswers,
       totalVotes,
       overallAccuracy: accuracy,
-      humanDetectionRate: 0,
-      aiDetectionRate: 0,
-      hybridDetectionRate: 0,
+      humanDetectionRate: detectionRateFor('human'),
+      aiDetectionRate: detectionRateFor('ai'),
+      hybridDetectionRate: detectionRateFor('hybrid'),
       mostBelievableHumanAnswerId: mostBelievableHuman?.id,
       mostObviousAIAnswerId: mostObviousAI?.id,
       votersWithPerfectScore: 0,

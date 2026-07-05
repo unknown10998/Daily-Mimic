@@ -13,16 +13,17 @@
     "login": "devvit login",
     "postinstall": "node tools/patch-devvit-start.mjs",
     "prettier": "prettier --write .",
-    "type-check": "tsc --build"
+    "type-check": "tsc --build",
+    "build:reddit": "npm run type-check && npm run lint && devvit playtest daily_mimic_dev"
   },
   "engines": {
     "node": ">=22.2.0"
   },
   "dependencies": {
-    "@devvit/start": "0.13.5",
-    "@devvit/web": "0.13.5",
+    "@devvit/start": "0.13.6",
+    "@devvit/web": "0.13.6",
     "@hono/node-server": "2.0.5",
-    "devvit": "0.13.5",
+    "devvit": "0.13.6",
     "hono": "4.12.27",
     "react": "19.2.7",
     "react-dom": "19.2.7"

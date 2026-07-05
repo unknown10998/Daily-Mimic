@@ -100,6 +100,60 @@ const tourArrowClass: Record<TourArrow, string> = {
   right: '-top-12 left-1/2 -translate-x-1/2 sm:-right-16 sm:top-8 sm:translate-x-0',
 };
 
+const getVisibleTourTarget = (targetName: TourStep['target']): HTMLElement | null => {
+  const targets = Array.from(document.querySelectorAll(`[data-tour-target="${targetName}"]`));
+  const visibleTarget = targets.find((target): target is HTMLElement => {
+    if (!(target instanceof HTMLElement)) return false;
+    const rect = target.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+
+  return visibleTarget ?? null;
+};
+
+const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+
+const getTourConnectorPoints = (popupRect: DOMRect, targetRect: TourHighlightRect) => {
+  const popupCenter = {
+    x: popupRect.left + popupRect.width / 2,
+    y: popupRect.top + popupRect.height / 2,
+  };
+  const targetCenter = {
+    x: targetRect.left + targetRect.width / 2,
+    y: targetRect.top + targetRect.height / 2,
+  };
+  const popupPadding = 12;
+  const targetPadding = 8;
+
+  const popupDeltaX = targetCenter.x - popupCenter.x;
+  const popupDeltaY = targetCenter.y - popupCenter.y;
+  const usePopupSide = Math.abs(popupDeltaX / Math.max(1, popupRect.width)) > Math.abs(popupDeltaY / Math.max(1, popupRect.height));
+  const start = usePopupSide
+    ? {
+      x: popupDeltaX >= 0 ? popupRect.right : popupRect.left,
+      y: clamp(targetCenter.y, popupRect.top + popupPadding, popupRect.bottom - popupPadding),
+    }
+    : {
+      x: clamp(targetCenter.x, popupRect.left + popupPadding, popupRect.right - popupPadding),
+      y: popupDeltaY >= 0 ? popupRect.bottom : popupRect.top,
+    };
+
+  const targetDeltaX = popupCenter.x - targetCenter.x;
+  const targetDeltaY = popupCenter.y - targetCenter.y;
+  const useTargetSide = Math.abs(targetDeltaX / Math.max(1, targetRect.width)) > Math.abs(targetDeltaY / Math.max(1, targetRect.height));
+  const end = useTargetSide
+    ? {
+      x: targetDeltaX >= 0 ? targetRect.left + targetRect.width : targetRect.left,
+      y: clamp(popupCenter.y, targetRect.top + targetPadding, targetRect.top + targetRect.height - targetPadding),
+    }
+    : {
+      x: clamp(popupCenter.x, targetRect.left + targetPadding, targetRect.left + targetRect.width - targetPadding),
+      y: targetDeltaY >= 0 ? targetRect.top + targetRect.height : targetRect.top,
+    };
+
+  return { start, end };
+};
+
 const tourSteps: TourStep[] = [
   {
     page: 'home',
@@ -306,7 +360,7 @@ export const App = () => {
       const isMobile = window.matchMedia('(max-width: 639px)').matches;
       if (isMobile) return;
 
-      const target = document.querySelector(`[data-tour-target="${currentTourStep.target}"]`);
+      const target = getVisibleTourTarget(currentTourStep.target);
 
       if (target instanceof HTMLElement) {
         target.classList.add('mimic-tour-active-target');
@@ -324,6 +378,44 @@ export const App = () => {
   }, [currentTourStep, tourActive]);
 
   useEffect(() => {
+    if (!tourActive || !currentTourStep || loading) return undefined;
+
+    let cancelled = false;
+    const scrollToTarget = () => {
+      const target = getVisibleTourTarget(currentTourStep.target);
+      if (!target) return;
+
+      const previousBodyOverflow = document.body.style.overflow;
+      const previousHtmlOverflow = document.documentElement.style.overflow;
+      const nav = document.querySelector('nav');
+      const navHeight = nav instanceof HTMLElement ? nav.getBoundingClientRect().height : 64;
+      const rect = target.getBoundingClientRect();
+      const isMobile = window.matchMedia('(max-width: 639px)').matches;
+      const popupReserve = isMobile ? Math.min(280, window.innerHeight * 0.38) : 0;
+      const usableHeight = Math.max(220, window.innerHeight - navHeight - popupReserve);
+      const targetTop = rect.top + window.scrollY;
+      const targetCenterOffset = Math.max(12, (usableHeight - rect.height) / 2);
+      const top = Math.max(0, targetTop - navHeight - targetCenterOffset);
+
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+      window.scrollTo({ top, behavior: 'smooth' });
+
+      window.setTimeout(() => {
+        if (cancelled || !tourActive) return;
+        document.body.style.overflow = previousBodyOverflow || 'hidden';
+        document.documentElement.style.overflow = previousHtmlOverflow || 'hidden';
+      }, 520);
+    };
+
+    const timers = [120, 380, 760].map((delay) => window.setTimeout(scrollToTarget, delay));
+    return () => {
+      cancelled = true;
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [currentTourStep, loading, page, tourActive]);
+
+  useEffect(() => {
     if (!tourActive || !currentTourStep) {
       return undefined;
     }
@@ -336,7 +428,7 @@ export const App = () => {
         return;
       }
 
-      const target = document.querySelector(`[data-tour-target="${currentTourStep.target}"]`);
+      const target = getVisibleTourTarget(currentTourStep.target);
 
       if (!(target instanceof HTMLElement)) {
         setTourHighlightRect(null);
@@ -366,40 +458,47 @@ export const App = () => {
       }
 
       const popupRect = popup.getBoundingClientRect();
-      const startX = popupRect.left + popupRect.width / 2;
-      const startY = popupRect.top + popupRect.height / 2;
-      const endX = highlightRect.left + highlightRect.width / 2;
-      const endY = highlightRect.top + highlightRect.height / 2;
-      const deltaX = endX - startX;
-      const deltaY = endY - startY;
+      const { start, end } = getTourConnectorPoints(popupRect, highlightRect);
+      const deltaX = end.x - start.x;
+      const deltaY = end.y - start.y;
       const distance = Math.hypot(deltaX, deltaY);
 
       setTourConnector({
-        top: startY,
-        left: startX,
+        top: start.y,
+        left: start.x,
         width: Math.max(36, distance),
         angle: Math.atan2(deltaY, deltaX),
       });
     };
 
-    const firstTimer = window.setTimeout(updateHighlight, 280);
-    const secondTimer = window.setTimeout(updateHighlight, 620);
-    const observedTarget = document.querySelector(`[data-tour-target="${currentTourStep.target}"]`);
-    const resizeObserver = observedTarget instanceof HTMLElement ? new ResizeObserver(updateHighlight) : null;
+    let frame = 0;
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(updateHighlight);
+    };
+    const timers = [80, 180, 320, 520, 820, 1200, 1700].map((delay) => window.setTimeout(scheduleUpdate, delay));
+    const resizeObserver = new ResizeObserver(scheduleUpdate);
+    const mutationObserver = new MutationObserver(scheduleUpdate);
+    const contentRoot = document.querySelector(`[data-tour-page="${currentTourStep.page}"]`);
+    const popup = document.querySelector('[data-tour-popup="true"]');
+    const observedTarget = getVisibleTourTarget(currentTourStep.target);
 
-    if (observedTarget instanceof HTMLElement) {
-      resizeObserver?.observe(observedTarget);
-    }
+    if (contentRoot instanceof HTMLElement) resizeObserver.observe(contentRoot);
+    if (popup instanceof HTMLElement) resizeObserver.observe(popup);
+    if (observedTarget instanceof HTMLElement) resizeObserver.observe(observedTarget);
+    if (contentRoot instanceof HTMLElement) mutationObserver.observe(contentRoot, { childList: true, subtree: true, attributes: true });
 
-    window.addEventListener('resize', updateHighlight);
-    window.addEventListener('scroll', updateHighlight, true);
+    scheduleUpdate();
+    window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener('scroll', scheduleUpdate, true);
 
     return () => {
-      window.clearTimeout(firstTimer);
-      window.clearTimeout(secondTimer);
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', updateHighlight);
-      window.removeEventListener('scroll', updateHighlight, true);
+      window.cancelAnimationFrame(frame);
+      timers.forEach((timer) => window.clearTimeout(timer));
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener('resize', scheduleUpdate);
+      window.removeEventListener('scroll', scheduleUpdate, true);
     };
   }, [currentTourStep, loading, page, tourActive]);
 
@@ -587,7 +686,7 @@ export const App = () => {
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
-              data-tour-target="mobile-menu-button"
+              data-tour-target="nav-tools"
               className="grid h-9 w-9 place-items-center rounded-sm border-2 border-[#101418] bg-[#fbfcf8] text-lg font-black text-[#101418] shadow-[3px_3px_0_#101418] lg:hidden"
               aria-label="Open navigation"
             >

@@ -46,6 +46,6 @@
     "build": "vite build"
   },
   "dev": {
-    "subreddit": "daily_mimiq_dev"
+    "subreddit": "daily_mimic_dev"
   }
 }

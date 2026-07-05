@@ -10,6 +10,7 @@ type Answer = {
   id: string;
   text: string;
   authorType: 'human' | 'ai' | 'hybrid';
+  authorDisplayName?: string;
   isOwnAnswer?: boolean;
 };
 
@@ -261,6 +262,7 @@ export const DailyInvestigationView = () => {
               text={response.text}
               selected={answers[response.id]}
               actual={toResponseOption(response.authorType)}
+              authorDisplayName={response.authorDisplayName}
               reveal={submitted}
               reasoning={reasonings[response.id] ?? ''}
               confidence={confidences[response.id] ?? 'medium'}

@@ -10,7 +10,8 @@ import type {
   GenerateAIRequest,
   VoteRequest,
 } from '../types/api';
-import type { AchievementDisplay, Answer, DailyStatistics, LeaderboardEntry, LevelProgress, PlayerProfile, Question, Vote } from '../types/game';
+import type { AchievementDisplay, Answer, DailyStatistics, GameState, LeaderboardEntry, LevelProgress, PlayerProfile, Question, Vote } from '../types/game';
+import { currentDateIso, nextUtcMidnightIso } from '../utils/text';
 
 export const game = new Hono();
 
@@ -76,6 +77,7 @@ type PlayerVoteSummary = {
 
 type InvestigationAnswer = Answer & {
   isOwnAnswer: boolean;
+  authorDisplayName: string;
 };
 
 type LeaderboardEntryWithLevel = LeaderboardEntry & {
@@ -138,6 +140,182 @@ const generateNextQuestionForDate = async (previousQuestion: Question | null, ne
   return gameEngine.buildQuestion(nextQuestionText, true, nextDate, aiStyle);
 };
 
+
+const applyMidnightSchedule = (state: GameState, date: string): void => {
+  const nextMidnight = nextUtcMidnightIso(date);
+  state.nextRolloverAt = nextMidnight;
+  state.answerDeadlineAt = nextMidnight;
+  state.votingDeadlineAt = nextMidnight;
+};
+
+const advanceGameDay = async (state: GameState, question: Question, context: string): Promise<{ nextQuestion: Question; lesson: string }> => {
+  await ensureAIAnswerForQuestion(question);
+  const answersWithAI = await redisStorage.getAnswersByQuestion(question.id);
+  const votesRaw = await redisStorage.getVotesByQuestion(question.id);
+  const votes = Object.values(votesRaw).map((value) => JSON.parse(value) as Vote);
+  await redisStorage.saveDailyStatistics(gameEngine.buildDailyStatistics(question.id, answersWithAI, votes, question.date));
+  await redisStorage.addAnsweredQuestionRecord(buildAnsweredQuestionRecord(question, answersWithAI, votes));
+
+  const humanPatterns = gameEngine.extractHumanPatterns(answersWithAI);
+  const aiReasoningFeedback = await getCorrectAIReasoningFeedback(answersWithAI, votes);
+  const answerTypeCounts = {
+    human: answersWithAI.filter((answer) => answer.authorType === 'human').length,
+    ai: answersWithAI.filter((answer) => answer.authorType === 'ai').length,
+    hybrid: answersWithAI.filter((answer) => answer.authorType === 'hybrid').length,
+  };
+  const observations = [
+    context,
+    `${answersWithAI.length} answers collected`,
+    `${votes.length} votes recorded`,
+    `Answer mix: ${answerTypeCounts.human} human, ${answerTypeCounts.ai} AI, ${answerTypeCounts.hybrid} hybrid`,
+    `AI style was ${gameEngine.getMonthlyAIStyle(question.date).name}`,
+    ...aiReasoningFeedback,
+  ];
+  const evolutionText = await geminiService.generateEvolutionLesson(question.text, observations.join('\n'), humanPatterns, gameEngine.getMonthlyAIStyle(question.date));
+  const lesson = gameEngine.buildAIEvolutionLesson(question.id, observations, humanPatterns, ['AI answers were too formal', 'AI answers avoided uncertainty'], evolutionText);
+  const prevEvolution = (await redisStorage.getAIEvolution()) ?? { history: [], lastUpdatedAt: new Date().toISOString() };
+  const nextEvolution = { history: [...prevEvolution.history, lesson], lastUpdatedAt: new Date().toISOString() };
+  await redisStorage.saveAIEvolution(nextEvolution);
+
+  const nextDate = addDays(state.activeDate, 1);
+  const nextQuestion = await generateNextQuestionForDate(question, nextDate, evolutionText, humanPatterns);
+  await redisStorage.saveQuestion(nextQuestion);
+  await redisStorage.setActiveQuestion(nextQuestion.date, nextQuestion.id);
+
+  state.phase = 'answering';
+  state.activeDate = nextQuestion.date;
+  state.activeQuestionId = nextQuestion.id;
+  applyMidnightSchedule(state, nextQuestion.date);
+  state.questionIds = state.questionIds.includes(nextQuestion.id) ? state.questionIds : [...state.questionIds, nextQuestion.id];
+  await redisStorage.saveGameState(state);
+
+  return { nextQuestion, lesson: evolutionText };
+};
+
+
+const BOT_PERSONAS = [
+  { id: 'bot:neighbor', name: 'mimicbot_neighbor', style: 'notices sounds, errands, and small awkward moments' },
+  { id: 'bot:night-owl', name: 'mimicbot_night_owl', style: 'mentions late-night habits, screens, and tired honesty' },
+  { id: 'bot:kitchen', name: 'mimicbot_kitchen', style: 'uses food, smell, dishes, and family-room details' },
+  { id: 'bot:commuter', name: 'mimicbot_commuter', style: 'answers through buses, cars, sidewalks, and waiting around' },
+  { id: 'bot:overthinker', name: 'mimicbot_overthinker', style: 'second-guesses the answer and explains the feeling behind it' },
+];
+
+const DEFAULT_BOT_LEADERBOARD_SEED = { score: 37, votes: 7, correctVotes: 3, answers: 5, streak: 1 };
+
+const BOT_LEADERBOARD_SEEDS = [
+  { score: 92, votes: 13, correctVotes: 8, answers: 7, streak: 6 },
+  { score: 74, votes: 11, correctVotes: 6, answers: 7, streak: 4 },
+  { score: 61, votes: 9, correctVotes: 5, answers: 6, streak: 3 },
+  { score: 49, votes: 8, correctVotes: 4, answers: 6, streak: 2 },
+  DEFAULT_BOT_LEADERBOARD_SEED,
+];
+
+const ensureBotLeaderboardProfiles = async (): Promise<void> => {
+  await Promise.all(BOT_PERSONAS.map(async (bot, index) => {
+    const seed = BOT_LEADERBOARD_SEEDS[index] ?? DEFAULT_BOT_LEADERBOARD_SEED;
+    const profile = await gameEngine.ensurePlayerProfile(bot.id, bot.name);
+    profile.username = bot.name;
+    profile.totalScore = Math.max(profile.totalScore, seed.score);
+    profile.totalVotes = Math.max(profile.totalVotes, seed.votes);
+    profile.correctVotes = Math.max(profile.correctVotes, seed.correctVotes);
+    profile.totalAnswers = Math.max(profile.totalAnswers, seed.answers);
+    profile.streak.current = Math.max(profile.streak.current, seed.streak);
+    profile.streak.best = Math.max(profile.streak.best, seed.streak);
+    profile.lastActiveAt = new Date().toISOString();
+    gameEngine.syncAchievements(profile);
+    await redisStorage.savePlayerProfile(profile);
+  }));
+};
+
+const randomInt = (min: number, max: number): number => Math.floor(Math.random() * (max - min + 1)) + min;
+
+const buildBotHumanText = (questionText: string, botName: string, style: string, index: number): string => {
+  const cleanedQuestion = questionText.replace(/\?+$/u, '').toLowerCase() || 'this prompt';
+  const persona = botName.replace('mimicbot_', '').replaceAll('_', ' ');
+  const variants = [
+    `I keep coming back to ${cleanedQuestion} as something I would notice during a boring errand. The answer would be a little sideways: keys in one hand, a receipt folded too many times, someone holding the door longer than needed. As the ${persona}, I would lean into ${style}. What would make it true is the awkward pause afterward, because that is usually where I realize what I actually meant.`,
+    `My first answer is not polished. It is more like: ${cleanedQuestion}, but at 1:17 a.m., with my screen too bright and my brain trying to turn a tiny feeling into a whole theory. The ${persona} version would include ${style}. I would probably delete one sentence, put it back, then leave the answer slightly messy because the mess is the honest part.`,
+    `Three details would sell it for me. First, the smell of something warm in the kitchen. Second, one dish left out because nobody wanted to admit they were done cleaning. Third, the way ${cleanedQuestion} suddenly feels less abstract when there is a real room around it. Since I am the ${persona}, I would answer through ${style}, with more texture than conclusion.`,
+    `I would answer ${cleanedQuestion} from a moving-place mood: half on a sidewalk, half watching traffic, half waiting for a light to change even though that is too many halves. The ${persona} voice would use ${style}. I think my answer would be specific but not tidy, because public little moments make people honest in a different way than sitting down to explain themselves.`,
+    `I do not fully trust my first answer to ${cleanedQuestion}, which is probably why it feels human. I would start confident, argue with myself, then land on one small example that makes the whole thing make sense. The ${persona} angle is ${style}. I would keep the uncertainty in the response, because removing it would make the answer sound cleaner than I actually felt.`,
+  ];
+
+  return variants[index % variants.length] ?? variants[0] ?? `For me, ${cleanedQuestion} would come down to one small, specific moment that felt honest instead of polished.`;
+};
+
+const ensureSimulationAnswers = async (question: Question): Promise<{ botAnswersAdded: number; hybridAdded: boolean; aiBlendPercent: number }> => {
+  let answers = await redisStorage.getAnswersByQuestion(question.id);
+  let botAnswersAdded = 0;
+
+  for (const [index, bot] of BOT_PERSONAS.entries()) {
+    if (answers.some((answer) => answer.authorId === bot.id)) continue;
+
+    const profile = await gameEngine.ensurePlayerProfile(bot.id, bot.name);
+    profile.username = bot.name;
+    profile.totalAnswers += 1;
+    profile.lastActiveAt = new Date().toISOString();
+    await redisStorage.savePlayerProfile(profile);
+
+    const answer = gameEngine.buildAnswer(question.id, bot.id, buildBotHumanText(question.text, bot.name, bot.style, index), 'human');
+    await redisStorage.saveAnswer(answer);
+    botAnswersAdded += 1;
+    answers = [...answers, answer];
+  }
+
+  await ensureAIAnswerForQuestion(question);
+  answers = await redisStorage.getAnswersByQuestion(question.id);
+
+  const aiBlendPercent = randomInt(30, 70);
+  const hasHybrid = answers.some((answer) => answer.authorId === 'hybrid:mimic-parser');
+  let hybridAdded = false;
+
+  if (!hasHybrid) {
+    const aiAnswer = answers.find((answer) => answer.authorType === 'ai')?.text
+      ?? await geminiService.generateAnswer(question.text, await gameEngine.getAIEvolutionSummary(), gameEngine.getMonthlyAIStyle(question.date));
+    const humanSources = answers.filter((answer) => answer.authorType === 'human').slice(0, 5).map((answer) => answer.text);
+    const hybridText = await geminiService.generateHybridAnswer(question.text, humanSources, aiAnswer, aiBlendPercent);
+    const hybridAnswer = gameEngine.buildAnswer(question.id, 'hybrid:mimic-parser', hybridText, 'hybrid');
+    await redisStorage.saveAnswer(hybridAnswer);
+    hybridAdded = true;
+  }
+
+  return { botAnswersAdded, hybridAdded, aiBlendPercent };
+};
+
+
+const getAnswerAuthorDisplayName = async (answer: Answer, question: Question): Promise<string> => {
+  const style = gameEngine.getMonthlyAIStyle(question.date);
+
+  if (answer.authorType === 'ai') {
+    return `${style.name} Mimic AI`;
+  }
+
+  if (answer.authorType === 'hybrid') {
+    return `${style.name} Hybrid Mimic`;
+  }
+
+  const bot = BOT_PERSONAS.find((persona) => persona.id === answer.authorId);
+  if (bot) {
+    return bot.name;
+  }
+
+  const profile = await redisStorage.getPlayerProfile(answer.authorId);
+  if (answer.authorId.startsWith('bot:')) {
+    return profile?.username.startsWith('mimicbot') === true ? profile.username : `mimicbot_${answer.authorId.slice('bot:'.length).replaceAll('-', '_')}`;
+  }
+
+  if (profile?.username) {
+    return `u/${profile.username}`;
+  }
+
+  if (answer.authorId.startsWith('player:')) {
+    return `u/${answer.authorId.slice('player:'.length)}`;
+  }
+
+  return 'u/anonymous';
+};
+
 const getPlayerId = async (): Promise<string> => {
   const username = await reddit.getCurrentUsername();
   if (!username) {
@@ -167,7 +345,7 @@ const getPreferences = (profile: PlayerProfile): PlayerPreferences => {
 
 const isRegistered = (profile: PlayerProfile): boolean => getPreferences(profile).onboarded === true;
 
-const ensureActiveQuestion = async (): Promise<{ question: Question; state: ReturnType<typeof gameEngine.initialGameState> }> => {
+const ensureActiveQuestion = async (): Promise<{ question: Question; state: GameState }> => {
   const state = (await redisStorage.getGameState()) ?? gameEngine.initialGameState();
   let question = await redisStorage.getQuestionByDate(state.activeDate);
 
@@ -177,6 +355,30 @@ const ensureActiveQuestion = async (): Promise<{ question: Question; state: Retu
     await redisStorage.setActiveQuestion(question.date, question.id);
     state.activeQuestionId = question.id;
     state.questionIds = state.questionIds.includes(question.id) ? state.questionIds : [...state.questionIds, question.id];
+    applyMidnightSchedule(state, question.date);
+    await redisStorage.saveGameState(state);
+  }
+
+  const today = currentDateIso();
+  let rolloverCount = 0;
+  while (state.activeDate < today && rolloverCount < 7) {
+    const result = await advanceGameDay(state, question, 'Automatic midnight rollover.');
+    question = result.nextQuestion;
+    rolloverCount += 1;
+  }
+
+  if (state.activeDate < today) {
+    state.activeDate = today;
+    question = await generateNextQuestionForDate(question, today, 'Catch-up prompt after missed rollover window.', []);
+    await redisStorage.saveQuestion(question);
+    await redisStorage.setActiveQuestion(question.date, question.id);
+    state.phase = 'answering';
+    state.activeQuestionId = question.id;
+    applyMidnightSchedule(state, question.date);
+    state.questionIds = state.questionIds.includes(question.id) ? state.questionIds : [...state.questionIds, question.id];
+    await redisStorage.saveGameState(state);
+  } else if (state.nextRolloverAt !== nextUtcMidnightIso(state.activeDate)) {
+    applyMidnightSchedule(state, state.activeDate);
     await redisStorage.saveGameState(state);
   }
 
@@ -214,8 +416,8 @@ const validateAnswerText = (text: string) => {
   if (clean.length < 250) {
     throw new Error('Answer must be at least 250 characters long.');
   }
-  if (clean.length > 800) {
-    throw new Error('Answer cannot exceed 800 characters.');
+  if (clean.length > 1000) {
+    throw new Error('Answer cannot exceed 1000 characters.');
   }
   return clean;
 };
@@ -465,10 +667,11 @@ game.get('/investigation', async (c) => {
     await ensureAIAnswerForQuestion(question);
     const playerId = await getPlayerId();
     const answers = await redisStorage.getAnswersByQuestion(question.id);
-    const investigationAnswers: InvestigationAnswer[] = answers.map((answer) => ({
+    const investigationAnswers: InvestigationAnswer[] = await Promise.all(answers.map(async (answer) => ({
       ...answer,
       isOwnAnswer: answer.authorId === playerId,
-    }));
+      authorDisplayName: await getAnswerAuthorDisplayName(answer, question),
+    })));
     const playerVotes = await getPlayerVoteSummariesForQuestion(question.id);
     return c.json<ApiSuccessResponse<{ question: Question | null; answers: InvestigationAnswer[]; playerVotes: PlayerVoteSummary[] }>>(respondOk({ question, answers: investigationAnswers, playerVotes }));
   } catch (error) {
@@ -669,6 +872,7 @@ game.post('/profile/pins', async (c) => {
 // GET /api/leaderboard
 game.get('/leaderboard', async (c) => {
   try {
+    await ensureBotLeaderboardProfiles();
     const leaderboard = await redisStorage.getLeaderboard();
     const entries = await Promise.all(leaderboard.map(async (entry): Promise<LeaderboardEntryWithLevel> => {
       const profile = await redisStorage.getPlayerProfile(entry.playerId);
@@ -759,35 +963,7 @@ game.post('/daily-rollover', async (c) => {
       throw new Error('No question available for rollover.');
     }
 
-    await ensureAIAnswerForQuestion(currentQuestion);
-    const answersWithAI = await redisStorage.getAnswersByQuestion(currentQuestion.id);
-    const votesRaw = await redisStorage.getVotesByQuestion(currentQuestion.id);
-    const votes = Object.values(votesRaw).map((value) => JSON.parse(value) as Vote);
-
-    const humanPatterns = gameEngine.extractHumanPatterns(answersWithAI);
-    const aiReasoningFeedback = await getCorrectAIReasoningFeedback(answersWithAI, votes);
-    const observations = [`${answersWithAI.length} answers collected`, `${votes.length} votes recorded`, `AI style was ${gameEngine.getMonthlyAIStyle(currentQuestion.date).name}`, ...aiReasoningFeedback];
-    const evolutionText = await geminiService.generateEvolutionLesson(currentQuestion.text, observations.join('\n'), humanPatterns, gameEngine.getMonthlyAIStyle(currentQuestion.date));
-
-    await redisStorage.addAnsweredQuestionRecord(buildAnsweredQuestionRecord(currentQuestion, answersWithAI, votes));
-
-    const lesson = gameEngine.buildAIEvolutionLesson(currentQuestion.id, observations, humanPatterns, ['AI answers were too formal', 'AI answers avoided uncertainty'], evolutionText);
-    const prevEvolution = (await redisStorage.getAIEvolution()) ?? { history: [], lastUpdatedAt: new Date().toISOString() };
-    const nextEvolution = { history: [...prevEvolution.history, lesson], lastUpdatedAt: new Date().toISOString() };
-    await redisStorage.saveAIEvolution(nextEvolution);
-
-    const nextDate = addDays(gameState.activeDate, 1);
-    const nextQuestion = await generateNextQuestionForDate(currentQuestion, nextDate, evolutionText, humanPatterns);
-    await redisStorage.saveQuestion(nextQuestion);
-    await redisStorage.setActiveQuestion(nextQuestion.date, nextQuestion.id);
-
-    gameState.phase = 'answering';
-    gameState.activeDate = nextQuestion.date;
-    gameState.nextRolloverAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    gameState.answerDeadlineAt = new Date(Date.now() + gameEngine.answerDurationMs()).toISOString();
-    gameState.votingDeadlineAt = new Date(Date.now() + gameEngine.answerDurationMs() + gameEngine.votingDurationMs()).toISOString();
-    gameState.questionIds = [...gameState.questionIds, nextQuestion.id];
-    await redisStorage.saveGameState(gameState);
+    const { lesson } = await advanceGameDay(gameState, currentQuestion, 'Manual daily rollover endpoint.');
 
     return c.json<ApiSuccessResponse<{ message: string; lesson: typeof lesson }>>(respondOk({ message: 'Daily rollover completed.', lesson }));
   } catch (error) {
@@ -799,35 +975,10 @@ game.post('/daily-rollover', async (c) => {
 game.post('/debug/simulate-day', async (c) => {
   try {
     const { question, state } = await ensureActiveQuestion();
+    const simulation = await ensureSimulationAnswers(question);
     const answers = await redisStorage.getAnswersByQuestion(question.id);
 
-    if (!answers.some((answer) => answer.authorType === 'ai')) {
-      const aiText = await geminiService.generateAnswer(question.text, await gameEngine.getAIEvolutionSummary(), gameEngine.getMonthlyAIStyle(question.date));
-      await redisStorage.saveAnswer(gameEngine.buildAnswer(question.id, 'ai:mimic', aiText, 'ai'));
-    }
-
-    const updatedAnswers = await redisStorage.getAnswersByQuestion(question.id);
-    const votesRaw = await redisStorage.getVotesByQuestion(question.id);
-    const votes = Object.values(votesRaw).map((value) => JSON.parse(value) as Vote);
-    await redisStorage.saveDailyStatistics(gameEngine.buildDailyStatistics(question.id, updatedAnswers, votes, question.date));
-    await redisStorage.addAnsweredQuestionRecord(buildAnsweredQuestionRecord(question, updatedAnswers, votes));
-
-    const nextDate = addDays(state.activeDate, 1);
-    const humanPatterns = gameEngine.extractHumanPatterns(updatedAnswers);
-    const aiReasoningFeedback = await getCorrectAIReasoningFeedback(updatedAnswers, votes);
-    const lesson = await geminiService.generateEvolutionLesson(question.text, `${updatedAnswers.length} answers and ${votes.length} votes were available in debug mode.\n${aiReasoningFeedback.join('\n')}`, humanPatterns, gameEngine.getMonthlyAIStyle(question.date));
-    const nextQuestion = await generateNextQuestionForDate(question, nextDate, lesson, humanPatterns);
-    await redisStorage.saveQuestion(nextQuestion);
-    await redisStorage.setActiveQuestion(nextQuestion.date, nextQuestion.id);
-
-    state.phase = 'answering';
-    state.activeDate = nextDate;
-    state.activeQuestionId = nextQuestion.id;
-    state.nextRolloverAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    state.answerDeadlineAt = new Date(Date.now() + gameEngine.answerDurationMs()).toISOString();
-    state.votingDeadlineAt = new Date(Date.now() + gameEngine.answerDurationMs() + gameEngine.votingDurationMs()).toISOString();
-    state.questionIds = state.questionIds.includes(nextQuestion.id) ? state.questionIds : [...state.questionIds, nextQuestion.id];
-    await redisStorage.saveGameState(state);
+    const { nextQuestion } = await advanceGameDay(state, question, `Debug simulate day. ${answers.length} answers were available before rollover. Added ${simulation.botAnswersAdded} human bots. Hybrid added: ${simulation.hybridAdded}. AI blend target: ${simulation.aiBlendPercent}%.`);
 
     return c.json<ApiSuccessResponse<{ message: string; previousQuestionId: string; nextQuestion: Question }>>(respondOk({
       message: 'Debug day simulated.',

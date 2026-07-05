@@ -16,6 +16,11 @@ type LeaderboardEntry = {
   lastActiveAt: string;
 };
 
+const getLeaderboardName = (player: LeaderboardEntry): string => {
+  if (player.playerId.startsWith('bot:')) return player.username;
+  return `u/${player.username}`;
+};
+
 const toTitleCase = (value: string): string => {
   return value
     .split(/\s+/u)
@@ -104,7 +109,7 @@ export const LeaderboardView = () => {
                         {player.rank}
                       </span>
                       <div className="min-w-0">
-                        <p className="break-all font-black text-[#101418]">u/{player.username}</p>
+                        <p className="break-all font-black text-[#101418]">{getLeaderboardName(player)}</p>
                         <p className="break-words text-sm font-semibold leading-6 text-[#303943]">{toTitleCase(player.adjective)} {toTitleCase(player.levelRank)} · Level {player.level} · {player.currentStreak} Day Streak</p>
                       </div>
                     </div>

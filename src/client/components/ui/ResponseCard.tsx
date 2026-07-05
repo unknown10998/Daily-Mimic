@@ -7,6 +7,7 @@ type ResponseCardProps = {
   text: string;
   selected?: ResponseOption | null | undefined;
   actual?: ResponseOption | null | undefined;
+  authorDisplayName?: string | undefined;
   reveal?: boolean;
   reasoning?: string;
   confidence?: ConfidenceOption;
@@ -20,8 +21,9 @@ type ResponseCardProps = {
 const options: ResponseOption[] = ['Human', 'AI', 'Hybrid'];
 const confidenceOptions: ConfidenceOption[] = ['low', 'medium', 'high'];
 
-export const ResponseCard = ({ text, selected, actual, reveal = false, reasoning = '', confidence = 'medium', disabled = false, disabledReason, onReasoningChange, onConfidenceChange, onSelect }: ResponseCardProps) => {
+export const ResponseCard = ({ text, selected, actual, authorDisplayName, reveal = false, reasoning = '', confidence = 'medium', disabled = false, disabledReason, onReasoningChange, onConfidenceChange, onSelect }: ResponseCardProps) => {
   const correct = reveal && selected !== null && selected !== undefined && actual === selected;
+  const revealStatus = disabled ? 'Skipped for fairness' : correct ? 'You got it right' : `You chose ${selected ?? 'Nothing'}`;
 
   return (
     <article className="mimic-tilt-card rounded-sm border-2 border-[#101418] bg-[#fbfcf8] p-5 shadow-[5px_5px_0_#101418]">
@@ -39,9 +41,14 @@ export const ResponseCard = ({ text, selected, actual, reveal = false, reasoning
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-2xl font-black text-[#101418]">{actual}</p>
             <p className="text-sm font-black text-[#303943]">
-              {correct ? 'You got it right' : `You chose ${selected ?? 'Nothing'}`}
+              {revealStatus}
             </p>
           </div>
+          {authorDisplayName ? (
+            <p className="mt-3 rounded-sm border-2 border-[#101418] bg-white px-3 py-2 text-sm font-black text-[#101418]">
+              Written by {authorDisplayName}
+            </p>
+          ) : null}
         </div>
       ) : null}
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
