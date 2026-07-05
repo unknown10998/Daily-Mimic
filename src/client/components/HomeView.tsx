@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { navigateTo, showToast } from '@devvit/web/client';
+import { showToast } from '@devvit/web/client';
 import { Badge } from './ui/Badge';
-import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { StatTile } from './ui/StatTile';
 import { Skeleton } from './ui/Skeleton';
@@ -33,8 +32,6 @@ type GameStats = {
 };
 
 export const HomeView = () => {
-  const [postId, setPostId] = useState('');
-  const [recreating, setRecreating] = useState(false);
   const [stats, setStats] = useState<GameStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -61,44 +58,6 @@ export const HomeView = () => {
     void loadStats();
   }, []);
 
-  const handleRecreate = async () => {
-    if (!postId.trim()) {
-      showToast('Paste the old post ID first.');
-      return;
-    }
-
-    setRecreating(true);
-
-    try {
-      const response = await fetch('/internal/menu/post-recreate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ postId: postId.trim() }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        showToast(result.showToast || 'I could not recreate the post.');
-        return;
-      }
-
-      if (result.navigateTo) {
-        navigateTo(result.navigateTo);
-        return;
-      }
-
-      showToast('Fresh post is ready.');
-    } catch (error) {
-      console.error(error);
-      showToast('I could not recreate the post. Try again in a minute.');
-    } finally {
-      setRecreating(false);
-    }
-  };
-
   if (loading) {
     return <Skeleton className="h-[520px] w-full rounded-lg" />;
   }
@@ -109,18 +68,18 @@ export const HomeView = () => {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm font-black uppercase text-[#ef5b4f]">The hook</p>
-            <h2 className="mt-3 text-4xl font-black leading-tight text-[#101418]">Can Reddit tell what was human before Mimic learns to fake it?</h2>
+            <h2 className="mt-3 text-4xl font-black leading-tight text-[#101418]">A daily Reddit game where the crowd teaches the AI that tries to fool them.</h2>
             <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-[#303943]">
-              Every day creates a new loop: write a real answer, investigate yesterday’s anonymous answers, then use community reasoning to make tomorrow’s AI harder to catch.
+              Write one real answer, investigate yesterday’s anonymous Human, AI, and Hybrid responses, then watch Mimic adapt from the community’s reasoning. Simple to play, harder every day.
             </p>
           </div>
           <Badge tone="warm">Built for daily play</Badge>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
           {[
-            ['Today', 'Answer the prompt with a real human story.'],
-            ['Tomorrow', 'Vote Human, AI, or Hybrid on yesterday’s answers.'],
-            ['Results', 'See what fooled people, earn XP, and teach Mimic.'],
+            ['1 minute', 'Answer today’s prompt with a real, specific human moment.'],
+            ['Next day', 'Vote Human, AI, or Hybrid on anonymous answers.'],
+            ['The hook', 'Gemini learns from the crowd and comes back harder.'],
           ].map(([label, description]) => (
             <div key={label} className="rounded-sm border-2 border-[#101418] bg-white p-4 shadow-[3px_3px_0_#101418]">
               <p className="text-xs font-black uppercase text-[#ef5b4f]">{label}</p>
@@ -165,21 +124,6 @@ export const HomeView = () => {
             <p className="text-sm font-semibold leading-6 text-[#303943]">
               Based on saved votes for the active day, not a canned demo number.
             </p>
-          </div>
-
-          <div className="space-y-4 rounded-sm border-2 border-[#101418] bg-[#fbfcf8] p-6">
-            <p className="text-sm font-black uppercase text-[#ef5b4f]">Recreate post</p>
-            <p className="text-sm font-semibold leading-6 text-[#303943]">Use this when a playtest post gets stale and you want a clean one.</p>
-            <input
-              type="text"
-              placeholder="Old post ID, like abc123"
-              value={postId}
-              onChange={(event) => setPostId(event.target.value)}
-              className="w-full rounded-sm border-2 border-[#101418] bg-white px-4 py-3 text-sm font-semibold text-[#101418] outline-none transition focus:bg-[#dff6f4]"
-            />
-            <Button onClick={handleRecreate} loading={recreating} className="w-full">
-              Recreate post
-            </Button>
           </div>
         </Card>
 

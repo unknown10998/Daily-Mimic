@@ -1,3 +1,4 @@
+import { settings } from '@devvit/settings';
 import { env } from '../config/env';
 import type { AIStyle, AnsweredQuestionRecord } from '../types/game';
 
@@ -9,11 +10,46 @@ const FALLBACK_QUESTIONS = [
   'What object in your room would recognize your mood first, and what would it notice?',
   'Tell a story about a smell, sound, or texture that instantly brings you somewhere else.',
 ];
-const isGeminiConfigured = () => env.googleGeminiApiKey.length > 0 && env.googleGeminiApiKey !== PLACEHOLDER_API_KEY;
-const getGeminiStatusReason = (): string => {
-  if (env.googleGeminiApiKey.length === 0) return 'No key value was found.';
-  if (env.googleGeminiApiKey === PLACEHOLDER_API_KEY) return 'The key is still the local placeholder.';
-  return `Loaded from ${env.googleGeminiApiKeySource}.`;
+type GeminiRuntimeConfig = {
+  apiKey: string;
+  keySource: string;
+  model: string;
+};
+
+const cleanConfigValue = (value: unknown): string => {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+};
+
+const getDevvitSetting = async (keys: string[]): Promise<{ value: string; source: string } | null> => {
+  for (const key of keys) {
+    try {
+      const value = cleanConfigValue(await settings.get<string>(key));
+      if (value) return { value, source: `Devvit app setting ${key}` };
+    } catch {
+      // Local development and some test runners do not expose Devvit settings.
+    }
+  }
+
+  return null;
+};
+
+const getGeminiRuntimeConfig = async (): Promise<GeminiRuntimeConfig> => {
+  const devvitKey = await getDevvitSetting(['GOOGLE_GEMINI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_KEY']);
+  const devvitModel = await getDevvitSetting(['GOOGLE_GEMINI_MODEL', 'GEMINI_MODEL']);
+
+  return {
+    apiKey: devvitKey?.value ?? env.googleGeminiApiKey,
+    keySource: devvitKey?.source ?? env.googleGeminiApiKeySource,
+    model: devvitModel?.value ?? env.googleGeminiModel,
+  };
+};
+
+const isGeminiConfigured = (config: GeminiRuntimeConfig): boolean => config.apiKey.length > 0 && config.apiKey !== PLACEHOLDER_API_KEY;
+const getGeminiStatusReason = (config: GeminiRuntimeConfig): string => {
+  if (config.apiKey.length === 0) return 'No key value was found.';
+  if (config.apiKey === PLACEHOLDER_API_KEY) return 'The key is still the local placeholder.';
+  return `Loaded from ${config.keySource}.`;
 };
 
 export type GeminiGenerationResult = {
@@ -37,11 +73,13 @@ export type ReasoningReview = {
 };
 
 const callGemini = async (prompt: string): Promise<GeminiGenerationResult> => {
-  if (!isGeminiConfigured()) {
+  const config = await getGeminiRuntimeConfig();
+
+  if (!isGeminiConfigured(config)) {
     return { text: '' };
   }
 
-  const response = await fetch(`${BASE_URL}/models/${encodeURIComponent(env.googleGeminiModel)}:generateContent?key=${encodeURIComponent(env.googleGeminiApiKey)}`, {
+  const response = await fetch(`${BASE_URL}/models/${encodeURIComponent(config.model)}:generateContent?key=${encodeURIComponent(config.apiKey)}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -73,12 +111,15 @@ const callGemini = async (prompt: string): Promise<GeminiGenerationResult> => {
 };
 
 export const geminiService = {
-  getStatus: () => ({
-    configured: isGeminiConfigured(),
-    model: env.googleGeminiModel,
-    keySource: env.googleGeminiApiKeySource,
-    reason: getGeminiStatusReason(),
-  }),
+  getStatus: async () => {
+    const config = await getGeminiRuntimeConfig();
+    return {
+      configured: isGeminiConfigured(config),
+      model: config.model,
+      keySource: config.keySource,
+      reason: getGeminiStatusReason(config),
+    };
+  },
 
   evaluateReasoning: async (questionText: string, answerText: string, voteType: string, actualType: string, reasoning: string): Promise<ReasoningReview> => {
     if (!reasoning.trim()) {

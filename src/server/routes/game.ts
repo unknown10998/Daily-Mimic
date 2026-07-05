@@ -7,7 +7,6 @@ import type {
   ApiErrorResponse,
   ApiSuccessResponse,
   AnswerRequest,
-  GenerateAIRequest,
   VoteRequest,
 } from '../types/api';
 import type { AchievementDisplay, Answer, DailyStatistics, GameState, LeaderboardEntry, LevelProgress, PlayerProfile, Question, Vote } from '../types/game';
@@ -44,17 +43,6 @@ type GameStats = {
   totalScore: number;
   levelProgress: LevelProgress;
   daysRegistered: number;
-};
-
-type DebugHealth = {
-  geminiConfigured: boolean;
-  geminiModel: string;
-  geminiKeySource: string;
-  geminiStatusReason: string;
-  activeDate: string;
-  activeQuestionReady: boolean;
-  investigationQuestionReady: boolean;
-  answeredQuestionsThisYear: number;
 };
 
 type VoteHistoryItem = {
@@ -228,62 +216,6 @@ const ensureBotLeaderboardProfiles = async (): Promise<void> => {
   }));
 };
 
-const randomInt = (min: number, max: number): number => Math.floor(Math.random() * (max - min + 1)) + min;
-
-const buildBotHumanText = (questionText: string, botName: string, style: string, index: number): string => {
-  const cleanedQuestion = questionText.replace(/\?+$/u, '').toLowerCase() || 'this prompt';
-  const persona = botName.replace('mimicbot_', '').replaceAll('_', ' ');
-  const variants = [
-    `I keep coming back to ${cleanedQuestion} as something I would notice during a boring errand. The answer would be a little sideways: keys in one hand, a receipt folded too many times, someone holding the door longer than needed. As the ${persona}, I would lean into ${style}. What would make it true is the awkward pause afterward, because that is usually where I realize what I actually meant.`,
-    `My first answer is not polished. It is more like: ${cleanedQuestion}, but at 1:17 a.m., with my screen too bright and my brain trying to turn a tiny feeling into a whole theory. The ${persona} version would include ${style}. I would probably delete one sentence, put it back, then leave the answer slightly messy because the mess is the honest part.`,
-    `Three details would sell it for me. First, the smell of something warm in the kitchen. Second, one dish left out because nobody wanted to admit they were done cleaning. Third, the way ${cleanedQuestion} suddenly feels less abstract when there is a real room around it. Since I am the ${persona}, I would answer through ${style}, with more texture than conclusion.`,
-    `I would answer ${cleanedQuestion} from a moving-place mood: half on a sidewalk, half watching traffic, half waiting for a light to change even though that is too many halves. The ${persona} voice would use ${style}. I think my answer would be specific but not tidy, because public little moments make people honest in a different way than sitting down to explain themselves.`,
-    `I do not fully trust my first answer to ${cleanedQuestion}, which is probably why it feels human. I would start confident, argue with myself, then land on one small example that makes the whole thing make sense. The ${persona} angle is ${style}. I would keep the uncertainty in the response, because removing it would make the answer sound cleaner than I actually felt.`,
-  ];
-
-  return variants[index % variants.length] ?? variants[0] ?? `For me, ${cleanedQuestion} would come down to one small, specific moment that felt honest instead of polished.`;
-};
-
-const ensureSimulationAnswers = async (question: Question): Promise<{ botAnswersAdded: number; hybridAdded: boolean; aiBlendPercent: number }> => {
-  let answers = await redisStorage.getAnswersByQuestion(question.id);
-  let botAnswersAdded = 0;
-
-  for (const [index, bot] of BOT_PERSONAS.entries()) {
-    if (answers.some((answer) => answer.authorId === bot.id)) continue;
-
-    const profile = await gameEngine.ensurePlayerProfile(bot.id, bot.name);
-    profile.username = bot.name;
-    profile.totalAnswers += 1;
-    profile.lastActiveAt = new Date().toISOString();
-    await redisStorage.savePlayerProfile(profile);
-
-    const answer = gameEngine.buildAnswer(question.id, bot.id, buildBotHumanText(question.text, bot.name, bot.style, index), 'human');
-    await redisStorage.saveAnswer(answer);
-    botAnswersAdded += 1;
-    answers = [...answers, answer];
-  }
-
-  await ensureAIAnswerForQuestion(question);
-  answers = await redisStorage.getAnswersByQuestion(question.id);
-
-  const aiBlendPercent = randomInt(30, 70);
-  const hasHybrid = answers.some((answer) => answer.authorId === 'hybrid:mimic-parser');
-  let hybridAdded = false;
-
-  if (!hasHybrid) {
-    const aiAnswer = answers.find((answer) => answer.authorType === 'ai')?.text
-      ?? await geminiService.generateAnswer(question.text, await gameEngine.getAIEvolutionSummary(), gameEngine.getMonthlyAIStyle(question.date));
-    const humanSources = answers.filter((answer) => answer.authorType === 'human').slice(0, 5).map((answer) => answer.text);
-    const hybridText = await geminiService.generateHybridAnswer(question.text, humanSources, aiAnswer, aiBlendPercent);
-    const hybridAnswer = gameEngine.buildAnswer(question.id, 'hybrid:mimic-parser', hybridText, 'hybrid');
-    await redisStorage.saveAnswer(hybridAnswer);
-    hybridAdded = true;
-  }
-
-  return { botAnswersAdded, hybridAdded, aiBlendPercent };
-};
-
-
 const getAnswerAuthorDisplayName = async (answer: Answer, question: Question): Promise<string> => {
   const style = gameEngine.getMonthlyAIStyle(question.date);
 
@@ -430,6 +362,11 @@ const sanitizeReasoning = (text: unknown): string | undefined => {
 
 const sanitizeConfidence = (value: unknown): Vote['confidence'] => {
   return value === 'low' || value === 'medium' || value === 'high' ? value : 'medium';
+};
+
+const sanitizeVoteType = (value: unknown): Vote['voteType'] => {
+  if (value === 'human' || value === 'ai' || value === 'hybrid') return value;
+  throw new Error('Choose Human, AI, or Hybrid.');
 };
 
 const talksAboutAI = (text: string): boolean => /\b(ai|bot|robot|machine|generated|model|llm|chatgpt|gemini|automated|too perfect|generic|unnatural)\b/i.test(text);
@@ -629,6 +566,12 @@ game.post('/answer', async (c) => {
     const body = (await c.req.json()) as AnswerRequest;
     const question = await getActiveQuestion();
     if (!question) throw new Error('No active daily question.');
+    if (body.questionId !== question.id) {
+      throw new Error('This answer belongs to a different daily question. Refresh and try again.');
+    }
+    if (!isQuestionActive(question)) {
+      throw new Error('Today’s answer window has closed.');
+    }
     const cleanText = validateAnswerText(body.answerText);
     const moderation = await geminiService.moderateAnswer(question.text, cleanText);
     if (!moderation.allowed) {
@@ -703,19 +646,20 @@ game.post('/vote', async (c) => {
     }
 
     const answer = await redisStorage.getAnswer(body.answerId);
-    if (!answer) throw new Error('Answer not found.');
+    if (!answer || answer.questionId !== question.id) throw new Error('Answer not found for this poll.');
 
     const voterId = await getPlayerId();
     if (answer.authorId === voterId) {
       throw new Error('You cannot investigate your own answer.');
     }
 
-    const correct = answer.authorType === body.voteType;
-    const fooledByHumanAnswer = answer.authorType === 'human' && body.voteType === 'ai' && answer.authorId !== voterId;
+    const voteType = sanitizeVoteType(body.voteType);
+    const correct = answer.authorType === voteType;
+    const fooledByHumanAnswer = answer.authorType === 'human' && voteType === 'ai' && answer.authorId !== voterId;
     const reasoning = sanitizeReasoning(body.reasoning);
     const confidence = sanitizeConfidence(body.confidence);
-    const reasoningReview = reasoning ? await geminiService.evaluateReasoning(question.text, answer.text, body.voteType, answer.authorType, reasoning) : null;
-    const vote = gameEngine.buildVote(question.id, answer.id, voterId, body.voteType, correct, reasoning, confidence, reasoningReview?.useful === true);
+    const reasoningReview = reasoning ? await geminiService.evaluateReasoning(question.text, answer.text, voteType, answer.authorType, reasoning) : null;
+    const vote = gameEngine.buildVote(question.id, answer.id, voterId, voteType, correct, reasoning, confidence, reasoningReview?.useful === true);
     await redisStorage.saveVote(vote);
 
     answer.voteCount += 1;
@@ -931,86 +875,6 @@ game.get('/history', async (c) => {
 
     const items = historyItems.flat().sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
     return c.json<ApiSuccessResponse<{ items: VoteHistoryItem[] }>>(respondOk({ items }));
-  } catch (error) {
-    return c.json<ApiErrorResponse>(respondError((error as Error).message), 400);
-  }
-});
-
-// POST /api/generate-ai
-game.post('/generate-ai', async (c) => {
-  try {
-    const body = (await c.req.json()) as GenerateAIRequest;
-    const question = await redisStorage.getQuestion(body.questionId);
-    if (!question) throw new Error('Question not found.');
-
-    const guidance = await gameEngine.getAIEvolutionSummary();
-    const aiText = await geminiService.generateAnswer(question.text, guidance, gameEngine.getMonthlyAIStyle(question.date));
-    const answer = gameEngine.buildAnswer(question.id, 'ai:mimic', aiText, 'ai');
-    await redisStorage.saveAnswer(answer);
-
-    return c.json<ApiSuccessResponse<{ answerId: string; answerText: string }>>(respondOk({ answerId: answer.id, answerText: answer.text }));
-  } catch (error) {
-    return c.json<ApiErrorResponse>(respondError((error as Error).message), 400);
-  }
-});
-
-// POST /api/daily-rollover
-game.post('/daily-rollover', async (c) => {
-  try {
-    const gameState = (await redisStorage.getGameState()) ?? gameEngine.initialGameState();
-    const currentQuestion = await redisStorage.getQuestionByDate(gameState.activeDate);
-    if (!currentQuestion) {
-      throw new Error('No question available for rollover.');
-    }
-
-    const { lesson } = await advanceGameDay(gameState, currentQuestion, 'Manual daily rollover endpoint.');
-
-    return c.json<ApiSuccessResponse<{ message: string; lesson: typeof lesson }>>(respondOk({ message: 'Daily rollover completed.', lesson }));
-  } catch (error) {
-    return c.json<ApiErrorResponse>(respondError((error as Error).message), 400);
-  }
-});
-
-// POST /api/debug/simulate-day
-game.post('/debug/simulate-day', async (c) => {
-  try {
-    const { question, state } = await ensureActiveQuestion();
-    const simulation = await ensureSimulationAnswers(question);
-    const answers = await redisStorage.getAnswersByQuestion(question.id);
-
-    const { nextQuestion } = await advanceGameDay(state, question, `Debug simulate day. ${answers.length} answers were available before rollover. Added ${simulation.botAnswersAdded} human bots. Hybrid added: ${simulation.hybridAdded}. AI blend target: ${simulation.aiBlendPercent}%.`);
-
-    return c.json<ApiSuccessResponse<{ message: string; previousQuestionId: string; nextQuestion: Question }>>(respondOk({
-      message: 'Debug day simulated.',
-      previousQuestionId: question.id,
-      nextQuestion,
-    }));
-  } catch (error) {
-    return c.json<ApiErrorResponse>(respondError((error as Error).message), 400);
-  }
-});
-
-// GET /api/debug/health
-game.get('/debug/health', async (c) => {
-  try {
-    const { state } = await ensureActiveQuestion();
-    const activeQuestion = await redisStorage.getQuestionByDate(state.activeDate);
-    const investigationQuestion = await getInvestigationQuestion();
-    const geminiStatus = geminiService.getStatus();
-    const history = await redisStorage.getAnsweredQuestionHistory(getYear(state.activeDate));
-
-    const health: DebugHealth = {
-      geminiConfigured: geminiStatus.configured,
-      geminiModel: geminiStatus.model,
-      geminiKeySource: geminiStatus.keySource,
-      geminiStatusReason: geminiStatus.reason,
-      activeDate: state.activeDate,
-      activeQuestionReady: activeQuestion !== null,
-      investigationQuestionReady: investigationQuestion !== null,
-      answeredQuestionsThisYear: history.questions.length,
-    };
-
-    return c.json<ApiSuccessResponse<{ health: DebugHealth }>>(respondOk({ health }));
   } catch (error) {
     return c.json<ApiErrorResponse>(respondError((error as Error).message), 400);
   }

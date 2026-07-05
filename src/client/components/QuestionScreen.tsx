@@ -37,6 +37,7 @@ type QuestionScreenProps = {
 };
 
 const MIN_ANSWER_LENGTH = 250;
+const MAX_ANSWER_LENGTH = 1000;
 
 const tiles = [
   { letter: 'M', tone: 'bg-[#00a7a5]' },
@@ -53,6 +54,8 @@ export const QuestionScreen = ({ refreshKey }: QuestionScreenProps) => {
   const [submittedAnswer, setSubmittedAnswer] = useState<SubmittedAnswer | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const trimmedAnswerLength = answer.trim().length;
+  const answerProgress = Math.min(100, Math.round((trimmedAnswerLength / MIN_ANSWER_LENGTH) * 100));
 
   useEffect(() => {
     const loadQuestion = async () => {
@@ -131,6 +134,9 @@ export const QuestionScreen = ({ refreshKey }: QuestionScreenProps) => {
           <h2 className="mt-3 text-3xl font-black leading-tight text-[#101418]">
             {question?.text ?? 'No prompt is registered for this day yet.'}
           </h2>
+          <p className="mt-3 max-w-2xl text-sm font-black leading-6 text-[#303943]">
+            Write the answer only a real person would write. Tomorrow, everyone tries to decide whether it was human, AI, or a hybrid.
+          </p>
           {question?.sourceHint ? <p className="mt-3 text-sm font-semibold text-[#303943]">{question.sourceHint}</p> : null}
         </div>
 
@@ -146,20 +152,30 @@ export const QuestionScreen = ({ refreshKey }: QuestionScreenProps) => {
               value={answer}
               onChange={(event) => setAnswer(event.target.value)}
               rows={8}
-              maxLength={1000}
-              placeholder="Write a real answer with enough detail that tomorrow’s voters have something to judge."
+              maxLength={MAX_ANSWER_LENGTH}
+              placeholder="Use a tiny scene, a specific object, or an imperfect thought. Make it hard for Mimic to fake you."
               className="w-full resize-none rounded-sm border-2 border-[#101418] bg-white px-4 py-4 text-base font-semibold leading-7 text-[#101418] outline-none transition focus:bg-[#f3fffd] focus:shadow-[4px_4px_0_#00a7a5]"
             />
 
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm font-semibold text-[#303943]">Your answer goes into tomorrow’s investigation poll.</p>
-              <span className={`font-mono text-sm font-black ${answer.trim().length >= MIN_ANSWER_LENGTH ? 'text-[#00a7a5]' : 'text-[#ef5b4f]'}`}>
-                {answer.length}/800 · min {MIN_ANSWER_LENGTH}
-              </span>
+            <div className="space-y-3 rounded-sm border-2 border-[#101418] bg-[#fff9df] p-4 shadow-[3px_3px_0_#101418]">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-black text-[#101418]">Tomorrow’s voters need enough detail to judge your voice.</p>
+                <span className={`font-mono text-sm font-black ${trimmedAnswerLength >= MIN_ANSWER_LENGTH ? 'text-[#00a7a5]' : 'text-[#ef5b4f]'}`}>
+                  {answer.length}/{MAX_ANSWER_LENGTH} · min {MIN_ANSWER_LENGTH}
+                </span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-sm border-2 border-[#101418] bg-white">
+                <div className="h-full bg-[#00a7a5] transition-all duration-300" style={{ width: `${answerProgress}%` }} />
+              </div>
+              <div className="grid gap-2 text-xs font-black uppercase text-[#303943] sm:grid-cols-3">
+                <span>Specific detail</span>
+                <span>Human rhythm</span>
+                <span>One honest wrinkle</span>
+              </div>
             </div>
 
-            <Button disabled={!question || answer.trim().length < MIN_ANSWER_LENGTH} loading={submitting} onClick={handleSubmit}>
-              {answer.trim().length >= MIN_ANSWER_LENGTH ? 'Submit for tomorrow' : 'Keep writing'}
+            <Button disabled={!question || trimmedAnswerLength < MIN_ANSWER_LENGTH} loading={submitting} onClick={handleSubmit}>
+              {trimmedAnswerLength >= MIN_ANSWER_LENGTH ? 'Submit for tomorrow' : 'Keep writing'}
             </Button>
           </>
         )}

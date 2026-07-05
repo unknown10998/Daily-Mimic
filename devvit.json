@@ -25,18 +25,8 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
-      },
-      {
-        "label": "Example form",
-        "description": "Show a simple form",
-        "location": "subreddit",
-        "forUserType": "moderator",
-        "endpoint": "/internal/menu/example-form"
       }
     ]
-  },
-  "forms": {
-    "exampleForm": "/internal/form/example-submit"
   },
   "triggers": {
     "onAppInstall": "/internal/triggers/on-app-install"
@@ -47,5 +37,21 @@
   },
   "dev": {
     "subreddit": "daily_mimic_dev"
+  },
+  "settings": {
+    "global": {
+      "GOOGLE_GEMINI_API_KEY": {
+        "type": "string",
+        "label": "Google Gemini API key",
+        "helpText": "Secret API key used by the Reddit-hosted server for Gemini moderation, generation, and daily question evolution.",
+        "isSecret": true
+      },
+      "GOOGLE_GEMINI_MODEL": {
+        "type": "string",
+        "label": "Google Gemini model",
+        "helpText": "Gemini model used by Mimic. gemini-2.5-flash is verified for this app.",
+        "defaultValue": "gemini-2.5-flash"
+      }
+    }
   }
 }

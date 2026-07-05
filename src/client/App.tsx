@@ -13,7 +13,6 @@ import { LoginView } from './components/LoginView';
 import { Button } from './components/ui/Button';
 import { Skeleton } from './components/ui/Skeleton';
 import { Modal } from './components/ui/Modal';
-import { formatDisplayDate } from './utils/date';
 import { applyDocumentTheme, getInitialDarkTheme, watchPreferredTheme } from './utils/theme';
 
 const pages = [
@@ -221,8 +220,8 @@ const tourSteps: TourStep[] = [
   },
   {
     page: 'home',
-    title: 'Settings and testing',
-    body: 'Use Settings for dark theme. Use Simulate day while testing to advance the game loop so today’s answers become tomorrow’s investigation.',
+    title: 'Settings',
+    body: 'Use Settings for dark theme and sound effects. The rest of the nav moves you through the daily loop.',
     placement: 'top-right',
     arrow: 'up',
     target: 'nav-tools',
@@ -235,14 +234,10 @@ export const App = () => {
   const [session, setSession] = useState<SessionData | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [openSettings, setOpenSettings] = useState(false);
-  const [debugging, setDebugging] = useState(false);
-  const [checkingHealth, setCheckingHealth] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshKey] = useState(0);
   const [darkTheme, setDarkTheme] = useState(getInitialDarkTheme);
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('mimic-sound') !== 'off');
-  const [debugToasts, setDebugToasts] = useState(() => localStorage.getItem('mimic-debug-toasts') !== 'off');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [healthSummary, setHealthSummary] = useState('Run the check to verify Gemini, the active day, and investigation data.');
   const [tourActive, setTourActive] = useState(false);
   const [tourIndex, setTourIndex] = useState(0);
   const [tourHighlightRect, setTourHighlightRect] = useState<TourHighlightRect | null>(null);
@@ -259,10 +254,6 @@ export const App = () => {
   useEffect(() => {
     localStorage.setItem('mimic-sound', soundEnabled ? 'on' : 'off');
   }, [soundEnabled]);
-
-  useEffect(() => {
-    localStorage.setItem('mimic-debug-toasts', debugToasts ? 'on' : 'off');
-  }, [debugToasts]);
 
   useEffect(() => {
     if (!soundEnabled) return undefined;
@@ -575,58 +566,6 @@ export const App = () => {
     }, 220);
   };
 
-  const handleSimulateDay = async () => {
-    setDebugging(true);
-
-    try {
-      const response = await fetch('/api/debug/simulate-day', { method: 'POST' });
-      const result = await response.json();
-
-      if (!response.ok || result.status !== 'ok') {
-        showToast(result.message || 'Unable to simulate a day.');
-        return;
-      }
-
-      if (debugToasts) {
-        showToast(`Simulated day: ${formatDisplayDate(result.data.nextQuestion.date)}`);
-      }
-      setRefreshKey((current) => current + 1);
-      setPage('question');
-    } catch (error) {
-      console.error(error);
-      showToast('Unable to simulate a day.');
-    } finally {
-      setDebugging(false);
-    }
-  };
-
-  const handleSystemCheck = async () => {
-    setCheckingHealth(true);
-
-    try {
-      const response = await fetch('/api/debug/health');
-      const result = await response.json();
-
-      if (!response.ok || result.status !== 'ok') {
-        setHealthSummary(result.message || 'System check failed.');
-        showToast(result.message || 'System check failed.');
-        return;
-      }
-
-      const health = result.data.health;
-      const gemini = health.geminiConfigured ? `Gemini ready (${health.geminiModel})` : `Gemini key missing: ${health.geminiStatusReason ?? 'not loaded into the server environment'}`;
-      const investigation = health.investigationQuestionReady ? 'investigation ready' : 'no yesterday poll yet';
-      const summary = `${gemini}; active day ${formatDisplayDate(health.activeDate)}; ${investigation}.`;
-      setHealthSummary(summary);
-      showToast(summary);
-    } catch (error) {
-      console.error(error);
-      setHealthSummary('System check failed. Check the server logs and Gemini API key.');
-      showToast('System check failed.');
-    } finally {
-      setCheckingHealth(false);
-    }
-  };
 
   const handleLogout = () => {
     setSession((current) => current ? { ...current, registered: false } : current);
@@ -639,7 +578,6 @@ export const App = () => {
   const handleSaveSettings = () => {
     localStorage.setItem('mimic-theme', darkTheme ? 'dark' : 'light');
     localStorage.setItem('mimic-sound', soundEnabled ? 'on' : 'off');
-    localStorage.setItem('mimic-debug-toasts', debugToasts ? 'on' : 'off');
     setOpenSettings(false);
     showToast('Settings saved.');
   };
@@ -717,9 +655,6 @@ export const App = () => {
               <Button variant="secondary" onClick={startTour} className="h-8 px-2.5 py-0 text-xs">
                 Tour
               </Button>
-              <Button variant="soft" loading={debugging} onClick={handleSimulateDay} className="h-8 px-2.5 py-0 text-xs">
-                Simulate day
-              </Button>
               {session?.registered === true ? (
                 <button
                   type="button"
@@ -776,9 +711,6 @@ export const App = () => {
                 <Button variant="secondary" onClick={() => { setMobileNavOpen(false); startTour(); }} className="h-10 w-full py-0 text-xs">
                   Tour
                 </Button>
-                <Button variant="soft" loading={debugging} onClick={() => { setMobileNavOpen(false); void handleSimulateDay(); }} className="h-10 w-full py-0 text-xs">
-                  Simulate day
-                </Button>
                 {session?.registered === true ? (
                   <button
                     type="button"
@@ -825,26 +757,11 @@ export const App = () => {
           </label>
           <label className="flex items-center justify-between rounded-sm border-2 border-[#101418] bg-[#fbfcf8] p-4">
             <span>
-              <span className="block font-black text-[#101418]">Debug toasts</span>
-              <span className="text-sm font-semibold text-[#303943]">Show status when test days are advanced.</span>
-            </span>
-            <input type="checkbox" checked={debugToasts} onChange={(event) => setDebugToasts(event.target.checked)} className="h-5 w-5 accent-[#00a7a5]" />
-          </label>
-          <label className="flex items-center justify-between rounded-sm border-2 border-[#101418] bg-[#fbfcf8] p-4">
-            <span>
               <span className="block font-black text-[#101418]">Sound effects</span>
               <span className="text-sm font-semibold text-[#303943]">Play a small click sound on buttons.</span>
             </span>
             <input type="checkbox" checked={soundEnabled} onChange={(event) => setSoundEnabled(event.target.checked)} className="h-5 w-5 accent-[#00a7a5]" />
           </label>
-          <div className="rounded-sm border-2 border-[#101418] bg-[#fbfcf8] p-4">
-            <p className="font-black text-[#101418]">AI loop check</p>
-            <p className="mt-1 text-sm font-semibold text-[#303943]">Verify Gemini config, today’s prompt, yesterday’s investigation, and yearly question memory.</p>
-            <p className="mt-3 rounded-sm border-2 border-[#101418] bg-[#fff9df] px-3 py-2 text-sm font-bold text-[#303943]">{healthSummary}</p>
-            <Button variant="secondary" loading={checkingHealth} onClick={handleSystemCheck} className="mt-3 w-full">
-              Run system check
-            </Button>
-          </div>
           <Button onClick={handleSaveSettings} className="w-full">
             Save settings
           </Button>
