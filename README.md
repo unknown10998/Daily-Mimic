@@ -32,6 +32,33 @@ The next day, those answers are mixed with AI-generated and Hybrid responses. Pl
 
 After voting, players see the reveal, earn XP, build streaks, unlock achievements, and climb the leaderboard.
 
+
+## How to Play
+
+1. **Sign up with your Reddit account.**
+
+   Mimic Daily creates your player profile, saves your XP, tracks your streak, and puts you on the leaderboard.
+
+2. **Answer today's prompt.**
+
+   Write a real response with enough detail to sound human. Your answer stays hidden until the next day's investigation.
+
+3. **Come back tomorrow to investigate.**
+
+   Yesterday's answers appear anonymously. Vote on each response as **Human**, **AI**, or **Hybrid**. Add reasoning and confidence when you make your call.
+
+4. **Reveal the truth.**
+
+   After voting, the game shows what each answer really was, who wrote human answers, and how the community performed.
+
+5. **Earn XP and build your streak.**
+
+   You gain XP for answering, correct investigations, useful reasoning, hard reads, perfect rounds, achievements, and fooling other players with a human answer that looks AI-generated.
+
+6. **Watch The Mimic adapt.**
+
+   Player answers, voting patterns, and reasoning feed into future Gemini prompts, so the AI changes over time and becomes harder to catch.
+
 ## Core Features
 
 * Daily question system
@@ -46,7 +73,6 @@ After voting, players see the reveal, earn XP, build streaks, unlock achievement
 * AI moderation for profanity and off-topic answers
 * Prompt-based AI evolution
 * Mobile-friendly UI
-* Simulate day tool for testing the full daily loop
 
 ## AI Evolution
 

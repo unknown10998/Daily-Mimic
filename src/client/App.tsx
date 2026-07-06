@@ -480,7 +480,16 @@ export const App = () => {
       const rect = target.getBoundingClientRect();
       const targetCenterY = rect.top + window.scrollY + rect.height / 2;
       const stepOffset = currentTourStep.scrollOffsetY ?? 0;
-      const top = Math.max(0, targetCenterY - window.innerHeight / 2 + stepOffset);
+      const isMobile = window.matchMedia('(max-width: 639px)').matches;
+      const nav = document.querySelector('nav');
+      const navHeight = nav instanceof HTMLElement ? nav.getBoundingClientRect().height : 64;
+      const popup = document.querySelector('[data-tour-popup="true"]');
+      const popupHeight = popup instanceof HTMLElement ? popup.getBoundingClientRect().height : 230;
+      const mobileBottomReserve = isMobile ? Math.min(window.innerHeight * 0.45, popupHeight + 34) : 0;
+      const visibleTop = isMobile ? navHeight + 14 : 0;
+      const visibleBottom = Math.max(visibleTop + 180, window.innerHeight - mobileBottomReserve);
+      const desiredViewportCenter = isMobile ? visibleTop + (visibleBottom - visibleTop) / 2 : window.innerHeight / 2;
+      const top = Math.max(0, targetCenterY - desiredViewportCenter + stepOffset);
 
       document.body.style.overflow = 'auto';
       document.documentElement.style.overflow = 'auto';
