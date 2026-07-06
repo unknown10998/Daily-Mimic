@@ -65,6 +65,40 @@ export const StreakTower = ({ streak, atRisk }: StreakTowerProps) => {
   );
 };
 
+type StreakCelebrationPopupProps = {
+  streak: number;
+  title?: string;
+  body: string;
+  onClose: () => void;
+};
+
+export const StreakCelebrationPopup = ({ streak, title = 'Brick placed', body, onClose }: StreakCelebrationPopupProps) => (
+  <div className="mimic-popup-overlay fixed inset-0 z-[70] grid min-h-svh place-items-center overflow-y-auto bg-[#101418]/70 px-4 py-6 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className="mimic-popup-content w-full max-w-md rounded-sm border-4 border-[#101418] bg-[#fff9df] p-5 text-center shadow-[7px_7px_0_#101418] sm:p-6 sm:shadow-[8px_8px_0_#101418]"
+      onClick={(event) => event.stopPropagation()}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Streak brick placed"
+    >
+      <p className="text-xs font-black uppercase text-[#ef5b4f]">{title}</p>
+      <div className="mt-4 flex justify-center">
+        <StreakTower streak={streak} atRisk={false} />
+      </div>
+      <h3 className="mt-4 text-3xl font-black text-[#101418]">{streak} day streak</h3>
+      <p className="mt-2 text-sm font-semibold leading-6 text-[#303943]">{body}</p>
+      <button
+        type="button"
+        onClick={onClose}
+        data-sound="close"
+        className="mt-5 inline-flex w-full items-center justify-center rounded-sm border-2 border-[#101418] bg-[#ef5b4f] px-5 py-3 text-sm font-black uppercase text-white shadow-[4px_4px_0_#101418] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#101418]"
+      >
+        Nice
+      </button>
+    </div>
+  </div>
+);
+
 export const Layout = ({ children, currentStreak = 0, streakLastSuccessAt, onLogout, showLogout = false, darkTheme = false, fixedNavOffset = false }: LayoutProps) => {
   const [logoFailed, setLogoFailed] = useState(false);
   const streakAtRisk = currentStreak > 0 && streakLastSuccessAt !== getTodayIso();
@@ -107,8 +141,8 @@ export const Layout = ({ children, currentStreak = 0, streakLastSuccessAt, onLog
                 Write today. Judge tomorrow. Learn which voices were human, which were Mimic, and which were somewhere in between.
               </p>
             </div>
-            <div className={`mimic-streak-card self-start rounded-sm border-2 border-[#101418] px-4 py-3 text-right shadow-[4px_4px_0_#101418] ${streakAtRisk ? 'bg-[#fff1d8]' : 'bg-[#fff9df]'}`}>
-              <div className="flex items-center justify-end gap-3">
+            <div className={`mimic-streak-card self-center rounded-sm border-2 border-[#101418] px-4 py-3 text-center shadow-[4px_4px_0_#101418] sm:self-start sm:text-right ${streakAtRisk ? 'bg-[#fff1d8]' : 'bg-[#fff9df]'}`}>
+              <div className="flex items-center justify-center gap-3 sm:justify-end">
                 <StreakTower streak={currentStreak} atRisk={streakAtRisk} />
                 <div>
                   <p className="mimic-streak-label text-xs font-black uppercase text-[#ef5b4f]">{streakLabel}</p>

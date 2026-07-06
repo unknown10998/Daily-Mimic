@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { showToast } from '@devvit/web/client';
 import { Layout } from './components/Layout';
 import { HomeView } from './components/HomeView';
@@ -338,11 +338,14 @@ export const App = () => {
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('mimic-sound') !== 'off');
   const [soundVolume, setSoundVolume] = useState(getInitialSoundVolume);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [tourIntroOpen, setTourIntroOpen] = useState(false);
   const [tourActive, setTourActive] = useState(false);
   const [tourIndex, setTourIndex] = useState(0);
   const [tourHighlightRect, setTourHighlightRect] = useState<TourHighlightRect | null>(null);
   const [tourConnector, setTourConnector] = useState<TourConnector | null>(null);
+  const tourTargetRef = useRef<HTMLElement | null>(null);
   const currentTourStep = tourSteps[tourIndex];
+  const tourOnFinalStep = tourActive && tourIndex >= tourSteps.length - 1;
   const audioStreak = session?.profile.streak.current ?? 0;
 
   useEffect(() => {
@@ -400,21 +403,30 @@ export const App = () => {
     const previousBodyOverflow = document.body.style.overflow;
     const previousHtmlOverflow = document.documentElement.style.overflow;
     const scrollKeys = new Set(['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'End', 'Home', 'PageDown', 'PageUp', ' ']);
-    const preventTourScroll = (event: Event) => event.preventDefault();
+    const isMobileTour = () => window.matchMedia('(max-width: 639px)').matches;
+    const preventTourScroll = (event: Event) => {
+      if (!isMobileTour()) event.preventDefault();
+    };
     const preventTourKeyScroll = (event: KeyboardEvent) => {
-      if (scrollKeys.has(event.key)) event.preventDefault();
+      if (!isMobileTour() && scrollKeys.has(event.key)) event.preventDefault();
+    };
+    const syncTourScrollLock = () => {
+      const mobile = isMobileTour();
+      document.body.style.overflow = mobile ? 'auto' : 'hidden';
+      document.documentElement.style.overflow = mobile ? 'auto' : 'hidden';
     };
 
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
+    syncTourScrollLock();
     document.addEventListener('wheel', preventTourScroll, { passive: false });
     document.addEventListener('touchmove', preventTourScroll, { passive: false });
     document.addEventListener('keydown', preventTourKeyScroll);
+    window.addEventListener('resize', syncTourScrollLock);
 
     return () => {
       document.removeEventListener('wheel', preventTourScroll);
       document.removeEventListener('touchmove', preventTourScroll);
       document.removeEventListener('keydown', preventTourKeyScroll);
+      window.removeEventListener('resize', syncTourScrollLock);
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousHtmlOverflow;
     };
@@ -425,7 +437,7 @@ export const App = () => {
       const timer = window.setTimeout(() => {
         setTourIndex(0);
         setPage(tourSteps[0]?.page ?? 'home');
-        setTourActive(true);
+        setTourIntroOpen(true);
       }, 250);
       return () => window.clearTimeout(timer);
     }
@@ -438,6 +450,7 @@ export const App = () => {
         element.classList.remove('mimic-tour-active-target');
         element.removeAttribute('data-tour-active');
       });
+      tourTargetRef.current = null;
     };
 
     if (!tourActive || !currentTourStep) {
@@ -447,12 +460,10 @@ export const App = () => {
 
     const updateActiveTarget = () => {
       clearActiveTargets();
-      const isMobile = window.matchMedia('(max-width: 639px)').matches;
-      if (isMobile) return;
-
       const target = getVisibleTourTarget(currentTourStep.target);
 
       if (target instanceof HTMLElement) {
+        tourTargetRef.current = target;
         target.classList.add('mimic-tour-active-target');
         target.setAttribute('data-tour-active', 'true');
       }
@@ -471,38 +482,58 @@ export const App = () => {
     if (!tourActive || !currentTourStep || loading) return undefined;
 
     let cancelled = false;
-    const scrollToTarget = () => {
-      const target = getVisibleTourTarget(currentTourStep.target);
+    const getHighlightedTarget = () => {
+      const activeTarget = tourTargetRef.current;
+      if (activeTarget?.dataset.tourTarget === currentTourStep.target) {
+        const activeRect = activeTarget.getBoundingClientRect();
+        if (activeRect.width > 0 && activeRect.height > 0) return activeTarget;
+      }
+      return getVisibleTourTarget(currentTourStep.target);
+    };
+
+    const scrollToTarget = (behavior: ScrollBehavior = 'smooth') => {
+      const target = getHighlightedTarget();
       if (!target) return;
 
+      tourTargetRef.current = target;
       const previousBodyOverflow = document.body.style.overflow;
       const previousHtmlOverflow = document.documentElement.style.overflow;
       const rect = target.getBoundingClientRect();
-      const targetCenterY = rect.top + window.scrollY + rect.height / 2;
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const targetTop = rect.top + window.scrollY;
+      const targetCenterY = targetTop + rect.height / 2;
       const stepOffset = currentTourStep.scrollOffsetY ?? 0;
       const isMobile = window.matchMedia('(max-width: 639px)').matches;
       const nav = document.querySelector('nav');
       const navHeight = nav instanceof HTMLElement ? nav.getBoundingClientRect().height : 64;
       const popup = document.querySelector('[data-tour-popup="true"]');
-      const popupHeight = popup instanceof HTMLElement ? popup.getBoundingClientRect().height : 230;
-      const mobileBottomReserve = isMobile ? Math.min(window.innerHeight * 0.45, popupHeight + 34) : 0;
-      const visibleTop = isMobile ? navHeight + 14 : 0;
-      const visibleBottom = Math.max(visibleTop + 180, window.innerHeight - mobileBottomReserve);
-      const desiredViewportCenter = isMobile ? visibleTop + (visibleBottom - visibleTop) / 2 : window.innerHeight / 2;
-      const top = Math.max(0, targetCenterY - desiredViewportCenter + stepOffset);
+      const popupHeight = popup instanceof HTMLElement ? popup.getBoundingClientRect().height : Math.min(260, viewportHeight * 0.45);
+      const mobileSafeTop = navHeight + 20;
+      const mobileSafeBottom = Math.max(mobileSafeTop + 180, viewportHeight - popupHeight - 48);
+      const targetTopLine = isMobile ? mobileSafeTop + 10 : 104;
+      const targetCenterLine = isMobile ? mobileSafeTop + Math.min(130, (mobileSafeBottom - mobileSafeTop) / 2) : viewportHeight * 0.38;
+      const topAlignedTop = targetTop - targetTopLine + stepOffset;
+      const centeredTop = targetCenterY - targetCenterLine + stepOffset;
+      const top = Math.max(0, isMobile && rect.height > mobileSafeBottom - mobileSafeTop ? topAlignedTop : Math.min(topAlignedTop, centeredTop));
 
       document.body.style.overflow = 'auto';
       document.documentElement.style.overflow = 'auto';
-      window.scrollTo({ top, behavior: 'smooth' });
+      window.scrollTo({ top, behavior });
 
       window.setTimeout(() => {
         if (cancelled || !tourActive) return;
+        if (isMobile) {
+          document.body.style.overflow = 'auto';
+          document.documentElement.style.overflow = 'auto';
+          return;
+        }
         document.body.style.overflow = previousBodyOverflow || 'hidden';
         document.documentElement.style.overflow = previousHtmlOverflow || 'hidden';
       }, 520);
     };
 
-    const timers = [120, 380, 760].map((delay) => window.setTimeout(scrollToTarget, delay));
+    const timers = [80, 220, 460, 760, 1120, 1500].map((delay) => window.setTimeout(() => scrollToTarget('smooth'), delay));
+    timers.push(window.setTimeout(() => scrollToTarget('auto'), 1900));
     return () => {
       cancelled = true;
       timers.forEach((timer) => window.clearTimeout(timer));
@@ -515,14 +546,10 @@ export const App = () => {
     }
 
     const updateHighlight = () => {
-      const isMobile = window.matchMedia('(max-width: 639px)').matches;
-      if (isMobile) {
-        setTourHighlightRect(null);
-        setTourConnector(null);
-        return;
-      }
-
-      const target = getVisibleTourTarget(currentTourStep.target);
+      const activeTarget = tourTargetRef.current;
+      const target = activeTarget?.dataset.tourTarget === currentTourStep.target
+        ? activeTarget
+        : getVisibleTourTarget(currentTourStep.target);
 
       if (!(target instanceof HTMLElement)) {
         setTourHighlightRect(null);
@@ -530,6 +557,7 @@ export const App = () => {
         return;
       }
 
+      tourTargetRef.current = target;
       const rect = target.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) {
         setTourHighlightRect(null);
@@ -643,7 +671,7 @@ export const App = () => {
       case 'question':
         return <QuestionScreen refreshKey={refreshKey} onAnswered={loadSession} />;
       case 'investigation':
-        return <DailyInvestigationView />;
+        return <DailyInvestigationView onCompleted={loadSession} />;
       case 'results':
         return <ResultsView />;
       case 'history':
@@ -693,11 +721,23 @@ export const App = () => {
     setTourIndex(0);
     setLoading(false);
     setPage(tourSteps[0]?.page ?? 'home');
+    setTourActive(false);
+    setTourIntroOpen(true);
+  };
+
+  const beginTourGuiding = () => {
+    setTourIntroOpen(false);
+    setTourHighlightRect(null);
+    setTourConnector(null);
+    setTourIndex(0);
+    setLoading(false);
+    setPage(tourSteps[0]?.page ?? 'home');
     setTourActive(true);
   };
 
   const closeTour = () => {
     localStorage.setItem('mimic-tour-seen', 'true');
+    setTourIntroOpen(false);
     setTourHighlightRect(null);
     setTourConnector(null);
     setTourActive(false);
@@ -722,6 +762,9 @@ export const App = () => {
   };
 
   const renderTourOverlay = () => {
+    const isMobile = window.matchMedia('(max-width: 639px)').matches;
+    if (isMobile) return null;
+
     if (!tourHighlightRect) {
       return <div className="mimic-popup-overlay fixed inset-0 z-40 bg-[#101418]/60 backdrop-blur-[1px]" />;
     }
@@ -747,15 +790,16 @@ export const App = () => {
   const renderApp = () => (
     <>
       <div className="space-y-6 pt-20">
-        <nav className="fixed left-0 right-0 top-0 z-50 border-b-2 border-[#101418] bg-[#e9eef1]/95 px-4 py-2 backdrop-blur">
+        <nav className="fixed left-0 right-0 top-0 z-50 border-b-2 border-[#101418] bg-[#e9eef1]/95 px-4 py-2 backdrop-blur lg:pr-16">
           <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-3">
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
+              disabled={tourActive && !tourOnFinalStep}
               data-sound="nav"
               data-tour-target="nav-tools"
-              className="grid h-9 w-9 place-items-center rounded-sm border-2 border-[#101418] bg-[#fbfcf8] text-lg font-black text-[#101418] shadow-[3px_3px_0_#101418] lg:hidden"
-              aria-label="Open navigation"
+              className="grid h-9 w-9 place-items-center rounded-sm border-2 border-[#101418] bg-[#fbfcf8] text-lg font-black text-[#101418] shadow-[3px_3px_0_#101418] transition disabled:cursor-not-allowed disabled:opacity-60 lg:hidden"
+              aria-label={tourActive && !tourOnFinalStep ? 'Navigation is locked until the final tour step' : 'Open navigation'}
             >
               ☰
             </button>
@@ -792,19 +836,20 @@ export const App = () => {
                   Logout
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={() => setOpenSettings(true)}
-                data-sound="settings"
-                className="grid h-8 w-8 place-items-center rounded-sm border-2 border-[#101418] bg-[#fbfcf8] text-base font-black text-[#101418] shadow-[3px_3px_0_#101418] transition hover:bg-[#dff6f4]"
-                aria-label="Open settings"
-                title="Settings"
-              >
-                ⚙
-              </button>
             </div>
           </div>
         </nav>
+
+        <button
+          type="button"
+          onClick={() => setOpenSettings(true)}
+          data-sound="settings"
+          className="fixed right-2 top-2 z-[70] hidden h-9 w-9 place-items-center rounded-sm border-2 border-[#101418] bg-[#fbfcf8] text-base font-black text-[#101418] shadow-[3px_3px_0_#101418] transition hover:bg-[#dff6f4] lg:grid"
+          aria-label="Open settings"
+          title="Settings"
+        >
+          ⚙
+        </button>
 
         {mobileNavOpen ? (
           <div className="mimic-popup-overlay fixed inset-0 z-[60] overflow-hidden bg-[#101418]/60 backdrop-blur-sm lg:hidden" onClick={() => setMobileNavOpen(false)}>
@@ -938,12 +983,32 @@ export const App = () => {
         </div>
       </Modal>
 
+      <Modal open={tourIntroOpen} className="max-w-md">
+        <div className="space-y-5 text-[#101418]">
+          <div>
+            <p className="text-xs font-black uppercase text-[#ef5b4f]">Quick tour</p>
+            <h2 className="mt-2 text-2xl font-black">Ready to learn Mimic Daily?</h2>
+            <p className="mt-3 text-sm font-semibold leading-6 text-[#303943]">
+              Press Start and the tour will move through the app one step at a time, scrolling each highlighted container into view.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <Button variant="secondary" onClick={closeTour} data-sound="close">
+              Skip
+            </Button>
+            <Button onClick={beginTourGuiding} data-sound="tour">
+              Start tour
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {tourActive && currentTourStep ? (
         <>
           {renderTourOverlay()}
           {tourHighlightRect ? (
             <div
-              className="mimic-tour-highlight pointer-events-none fixed z-[55] hidden animate-pulse rounded-sm border-4 border-[#fff9df] shadow-[0_0_0_4px_#101418,6px_6px_0_#ef5b4f] sm:block"
+              className="mimic-tour-highlight pointer-events-none fixed z-[55] animate-pulse rounded-sm border-4 border-[#fff9df] shadow-[0_0_0_4px_#101418,6px_6px_0_#ef5b4f]"
               style={{
                 top: tourHighlightRect.top,
                 left: tourHighlightRect.left,
@@ -969,12 +1034,6 @@ export const App = () => {
           ) : null}
           <div className={tourPanelClass[currentTourStep.placement]}>
             <div data-tour-popup="true" className="mimic-popup-card mimic-popup-content mimic-tour-card relative max-h-[58svh] overflow-y-auto rounded-sm border-4 border-[#101418] bg-white p-3 shadow-[4px_4px_0_#101418] sm:max-h-[calc(100vh-7rem)] sm:p-5 sm:shadow-[9px_9px_0_#101418]">
-              <span
-                className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 text-5xl font-black leading-none text-[#fff9df] [text-shadow:4px_4px_0_#101418] sm:hidden"
-                aria-hidden="true"
-              >
-                ↑
-              </span>
               <span
                 className={`pointer-events-none absolute hidden text-6xl font-black leading-none text-[#fff9df] [text-shadow:4px_4px_0_#101418] sm:block ${tourArrowClass[currentTourStep.arrow]}`}
                 aria-hidden="true"

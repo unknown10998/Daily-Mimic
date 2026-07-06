@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { showToast } from '@devvit/web/client';
 import { Button } from './ui/Button';
+import { StreakTower } from './Layout';
 import { ResponseCard } from './ui/ResponseCard';
 import { Skeleton } from './ui/Skeleton';
 import type { ConfidenceOption, ResponseOption } from './ui/ResponseCard';
@@ -46,6 +47,7 @@ type VotePayload = {
       perfectInvestigationBonusXp: number;
       reasoningBonusXp: number;
       confidencePenaltyXp: number;
+      currentStreak: number;
     };
   };
 };
@@ -74,7 +76,11 @@ const toResponseOption = (value: PlayerVote['voteType'] | Answer['authorType']):
   return 'Hybrid';
 };
 
-export const DailyInvestigationView = () => {
+type DailyInvestigationViewProps = {
+  onCompleted?: () => void;
+};
+
+export const DailyInvestigationView = ({ onCompleted }: DailyInvestigationViewProps) => {
   const [responses, setResponses] = useState<Answer[]>([]);
   const [questionId, setQuestionId] = useState('');
   const [questionDate, setQuestionDate] = useState('');
@@ -86,6 +92,7 @@ export const DailyInvestigationView = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitSummary, setSubmitSummary] = useState<SubmitSummary | null>(null);
+  const [celebrationStreak, setCelebrationStreak] = useState<number | null>(null);
 
   useEffect(() => {
     const loadInvestigation = async () => {
@@ -145,6 +152,7 @@ export const DailyInvestigationView = () => {
     let perfectInvestigationBonusXp = 0;
     let reasoningBonusXp = 0;
     let confidencePenaltyXp = 0;
+    let currentStreak = 0;
 
     try {
       for (const response of responses) {
@@ -173,11 +181,14 @@ export const DailyInvestigationView = () => {
         perfectInvestigationBonusXp += result.data.vote.perfectInvestigationBonusXp;
         reasoningBonusXp += result.data.vote.reasoningBonusXp;
         confidencePenaltyXp += result.data.vote.confidencePenaltyXp;
+        currentStreak = result.data.vote.currentStreak;
       }
 
       setSubmitted(true);
       setSubmitSummary({ correctVotes, totalVotes, playerXp, authorBonusXp, streakBonusXp, hardReadBonusXp, perfectInvestigationBonusXp, reasoningBonusXp, confidencePenaltyXp });
+      if (currentStreak > 0) setCelebrationStreak(currentStreak);
       window.dispatchEvent(new CustomEvent('mimic:sound', { detail: 'reveal' }));
+      onCompleted?.();
       showToast('Investigation saved. Results revealed below.');
     } catch (error) {
       console.error(error);
@@ -214,8 +225,8 @@ export const DailyInvestigationView = () => {
       ) : null}
 
       {submitSummary ? (
-        <div className="mimic-popup-overlay fixed inset-0 z-50 flex items-center justify-center bg-[#101418]/70 px-4 py-8 backdrop-blur-sm">
-          <div className="mimic-popup-card mimic-popup-content w-full max-w-2xl rounded-sm border-4 border-[#101418] bg-white p-7 shadow-[10px_10px_0_#101418]">
+        <div className="mimic-popup-overlay fixed inset-0 z-50 grid min-h-svh place-items-center overflow-y-auto bg-[#101418]/70 px-4 py-6 backdrop-blur-sm">
+          <div className="mimic-popup-card mimic-popup-content w-full max-w-2xl rounded-sm border-4 border-[#101418] bg-white p-5 shadow-[7px_7px_0_#101418] sm:p-7 sm:shadow-[10px_10px_0_#101418]">
             <div className="flex items-start justify-between gap-5">
               <div>
                 <p className="text-xs font-black uppercase text-[#ef5b4f]">Investigation results</p>
@@ -225,10 +236,23 @@ export const DailyInvestigationView = () => {
                 <p className="mt-2 text-sm font-semibold leading-6 text-[#303943]">
                   Actual labels are now visible. You earned {submitSummary.playerXp} XP from this investigation.
                 </p>
+                {celebrationStreak !== null ? (
+                  <div className="mt-4 flex flex-col items-center rounded-sm border-2 border-[#101418] bg-[#fff9df] px-4 py-3 text-center shadow-[4px_4px_0_#101418] sm:flex-row sm:justify-between sm:text-left">
+                    <div>
+                      <p className="text-xs font-black uppercase text-[#ef5b4f]">Streak brick placed</p>
+                      <p className="mt-1 text-2xl font-black text-[#101418]">{celebrationStreak} day streak</p>
+                      <p className="mt-1 text-xs font-bold uppercase text-[#303943]">The tower gets stronger after completing the round.</p>
+                    </div>
+                    <div className="mt-3 sm:mt-0">
+                      <StreakTower streak={celebrationStreak} atRisk={false} />
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <button
                 type="button"
-                onClick={() => setSubmitSummary(null)}
+                onClick={() => { setSubmitSummary(null); setCelebrationStreak(null); }}
+                data-sound="close"
                 className="grid h-9 w-9 shrink-0 place-items-center rounded-sm border-2 border-[#101418] bg-[#ef5b4f] text-lg font-black text-white shadow-[3px_3px_0_#101418]"
                 aria-label="Close results popup"
               >
@@ -250,6 +274,7 @@ export const DailyInvestigationView = () => {
           </div>
         </div>
       ) : null}
+
 
       {responses.length === 0 ? (
         <div className="rounded-sm border-2 border-[#101418] bg-[#fbfcf8] p-6 font-semibold text-[#303943] shadow-[5px_5px_0_#101418]">

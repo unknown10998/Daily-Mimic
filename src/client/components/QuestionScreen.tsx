@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { showToast } from '@devvit/web/client';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
-import { StreakTower } from './Layout';
+import { StreakCelebrationPopup } from './Layout';
 import { Skeleton } from './ui/Skeleton';
 import { formatDisplayDate } from '../utils/date';
 
@@ -222,27 +222,11 @@ export const QuestionScreen = ({ refreshKey, onAnswered }: QuestionScreenProps) 
     </section>
 
     {celebrationStreak !== null ? (
-      <div className="mimic-popup-overlay fixed inset-0 z-[70] grid place-items-center bg-[#101418]/70 px-4 backdrop-blur-sm" onClick={() => setCelebrationStreak(null)}>
-        <div
-          className="mimic-popup-content w-full max-w-md rounded-sm border-4 border-[#101418] bg-[#fff9df] p-6 text-center shadow-[8px_8px_0_#101418]"
-          onClick={(event) => event.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Streak brick placed"
-        >
-          <p className="text-xs font-black uppercase text-[#ef5b4f]">Brick placed</p>
-          <div className="mt-4 flex justify-center">
-            <StreakTower streak={celebrationStreak} atRisk={false} />
-          </div>
-          <h3 className="mt-4 text-3xl font-black text-[#101418]">{celebrationStreak} day streak</h3>
-          <p className="mt-2 text-sm font-semibold leading-6 text-[#303943]">
-            Your answer is locked in for tomorrow’s investigation. The tower gets one brick stronger.
-          </p>
-          <Button className="mt-5 w-full" onClick={() => setCelebrationStreak(null)} data-sound="close">
-            Nice
-          </Button>
-        </div>
-      </div>
+      <StreakCelebrationPopup
+        streak={celebrationStreak}
+        body="Your answer is locked in for tomorrow’s investigation. The tower gets one brick stronger."
+        onClose={() => setCelebrationStreak(null)}
+      />
     ) : null}
     </>
   );

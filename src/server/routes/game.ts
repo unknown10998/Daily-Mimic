@@ -310,6 +310,17 @@ const ensureActiveQuestion = async (): Promise<{ question: Question; state: Game
     applyMidnightSchedule(state, question.date);
     state.questionIds = state.questionIds.includes(question.id) ? state.questionIds : [...state.questionIds, question.id];
     await redisStorage.saveGameState(state);
+  } else if (state.activeDate > today) {
+    const previousQuestion = question;
+    state.activeDate = today;
+    question = await redisStorage.getQuestionByDate(today) ?? await generateNextQuestionForDate(previousQuestion, today, 'Reset active day back to the real Central Time date.', []);
+    await redisStorage.saveQuestion(question);
+    await redisStorage.setActiveQuestion(question.date, question.id);
+    state.phase = 'answering';
+    state.activeQuestionId = question.id;
+    applyMidnightSchedule(state, question.date);
+    state.questionIds = state.questionIds.includes(question.id) ? state.questionIds : [...state.questionIds, question.id];
+    await redisStorage.saveGameState(state);
   } else if (state.nextRolloverAt !== nextUtcMidnightIso(state.activeDate)) {
     applyMidnightSchedule(state, state.activeDate);
     await redisStorage.saveGameState(state);
@@ -320,7 +331,7 @@ const ensureActiveQuestion = async (): Promise<{ question: Question; state: Game
 
 const getActiveQuestion = async () => {
   const gameState = await redisStorage.getGameState();
-  const date = gameState?.activeDate ?? new Date().toISOString().slice(0, 10);
+  const date = gameState?.activeDate ?? currentDateIso();
   return await redisStorage.getQuestionByDate(date);
 };
 
@@ -748,7 +759,7 @@ game.post('/vote', async (c) => {
       }
     }
 
-    return c.json<ApiSuccessResponse<{ vote: { id: string; correct: boolean; playerXp: number; authorBonusXp: number; streakBonusXp: number; hardReadBonusXp: number; perfectInvestigationBonusXp: number; reasoningBonusXp: number; confidencePenaltyXp: number } }>>(respondOk({
+    return c.json<ApiSuccessResponse<{ vote: { id: string; correct: boolean; playerXp: number; authorBonusXp: number; streakBonusXp: number; hardReadBonusXp: number; perfectInvestigationBonusXp: number; reasoningBonusXp: number; confidencePenaltyXp: number; currentStreak: number } }>>(respondOk({
       vote: {
         id: vote.id,
         correct,
@@ -759,6 +770,7 @@ game.post('/vote', async (c) => {
         perfectInvestigationBonusXp,
         reasoningBonusXp,
         confidencePenaltyXp,
+        currentStreak: player.streak.current,
       },
     }));
   } catch (error) {

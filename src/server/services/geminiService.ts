@@ -378,7 +378,7 @@ Return only the question text.`;
 
     try {
       const result = await callGemini(prompt);
-      return result.text || pickFallbackQuestion(previousQuestion, evolutionLesson, answeredQuestions);
+      return ensureUniqueQuestion(result.text, previousQuestion, evolutionLesson, answeredQuestions);
     } catch (error) {
       console.error(error);
       return pickFallbackQuestion(previousQuestion, evolutionLesson, answeredQuestions);
@@ -536,10 +536,44 @@ const buildFallbackEvolutionLesson = (): string => {
   return 'Human answers leaned on specific memories, imperfect phrasing, and sensory details. AI answers sounded smoother and more balanced. Tomorrow, use one concrete scene, one small uncertainty, and fewer polished transitions.';
 };
 
+const normalizeQuestionText = (question: string): string => question
+  .trim()
+  .replace(/^[-*\d.\s]+/u, '')
+  .replace(/^question:\s*/iu, '')
+  .replace(/[“”]/gu, '"')
+  .replace(/[’]/gu, "'")
+  .replace(/\s+/gu, ' ')
+  .replace(/[?.!]+$/u, '')
+  .toLowerCase();
+
+const cleanQuestionText = (question: string): string => {
+  const firstLine = question.split(/\r?\n/u).map((line) => line.trim()).find(Boolean) ?? '';
+  const withoutPrefix = firstLine.replace(/^[-*\d.\s]+/u, '').replace(/^question:\s*/iu, '').trim();
+  if (!withoutPrefix) return '';
+  return /[?!.]$/u.test(withoutPrefix) ? withoutPrefix : `${withoutPrefix}?`;
+};
+
 const pickFallbackQuestion = (previousQuestion: string, evolutionLesson: string, answeredQuestions: AnsweredQuestionRecord[]): string => {
-  const usedQuestions = new Set(answeredQuestions.map((record) => record.text.trim().toLowerCase()));
-  const candidates = FALLBACK_QUESTIONS.filter((question) => question !== previousQuestion && !usedQuestions.has(question.toLowerCase()));
-  const pool = candidates.length > 0 ? candidates : FALLBACK_QUESTIONS;
-  const index = Math.abs(previousQuestion.length + evolutionLesson.length + answeredQuestions.length) % pool.length;
-  return pool[index] ?? 'What small detail from today would prove you were really there?';
+  const usedQuestions = new Set(answeredQuestions.map((record) => normalizeQuestionText(record.text)));
+  const previousNormalized = normalizeQuestionText(previousQuestion);
+  const candidates = FALLBACK_QUESTIONS.filter((question) => {
+    const normalized = normalizeQuestionText(question);
+    return normalized !== previousNormalized && !usedQuestions.has(normalized);
+  });
+  const pool = candidates.length > 0 ? candidates : FALLBACK_QUESTIONS.filter((question) => normalizeQuestionText(question) !== previousNormalized);
+  const finalPool = pool.length > 0 ? pool : FALLBACK_QUESTIONS;
+  const index = Math.abs(previousQuestion.length + evolutionLesson.length + answeredQuestions.length) % finalPool.length;
+  return finalPool[index] ?? 'What small detail from today would prove you were really there?';
+};
+
+const ensureUniqueQuestion = (candidate: string, previousQuestion: string, evolutionLesson: string, answeredQuestions: AnsweredQuestionRecord[]): string => {
+  const cleaned = cleanQuestionText(candidate);
+  const usedQuestions = new Set(answeredQuestions.map((record) => normalizeQuestionText(record.text)));
+  const normalized = normalizeQuestionText(cleaned);
+
+  if (!cleaned || normalized === normalizeQuestionText(previousQuestion) || usedQuestions.has(normalized)) {
+    return pickFallbackQuestion(previousQuestion, evolutionLesson, answeredQuestions);
+  }
+
+  return cleaned;
 };
