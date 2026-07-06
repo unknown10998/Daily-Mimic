@@ -127,6 +127,10 @@ button:disabled {
   animation: mimicOverlayIn 220ms ease both;
 }
 
+.mimic-tour-overlay-panel {
+  pointer-events: none;
+}
+
 .mimic-popup-card {
   position: relative;
   animation: mimicPopupIn 340ms cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
@@ -159,7 +163,7 @@ button:disabled {
 
 .mimic-tour-active-target {
   position: relative;
-  z-index: 54;
+  z-index: 58;
   isolation: isolate;
   animation: mimicTourTargetForward 260ms ease-out both;
 }
@@ -176,6 +180,182 @@ button:disabled {
 
 .mimic-toast-card {
   animation: mimicToastIn 240ms ease-out both;
+}
+
+
+.mimic-streak-card {
+  min-width: 190px;
+}
+
+
+.mimic-streak-card .mimic-streak-label,
+.mimic-dark .mimic-streak-card .mimic-streak-label {
+  color: #ef5b4f !important;
+}
+
+.mimic-streak-card .mimic-streak-count,
+.mimic-streak-card .mimic-streak-days,
+.mimic-streak-card .mimic-streak-status,
+.mimic-dark .mimic-streak-card .mimic-streak-count,
+.mimic-dark .mimic-streak-card .mimic-streak-days,
+.mimic-dark .mimic-streak-card .mimic-streak-status {
+  color: #101418 !important;
+}
+
+.mimic-streak-stage-tower {
+  position: relative;
+  display: grid;
+  width: 72px;
+  min-width: 72px;
+  height: 82px;
+  place-items: end center;
+}
+
+.mimic-streak-skyline {
+  position: relative;
+  display: grid;
+  width: 58px;
+  min-height: 56px;
+  grid-template-columns: repeat(3, 1fr);
+  align-content: end;
+  gap: 3px;
+  transform-origin: bottom center;
+}
+
+.mimic-streak-brick {
+  height: 10px;
+  border: 2px solid #101418;
+  background: #b8c3cb;
+  box-shadow: 2px 2px 0 #101418;
+  animation: mimicBrickDrop 520ms cubic-bezier(0.18, 0.89, 0.32, 1.18) both;
+}
+
+.mimic-streak-stage-foundation .mimic-streak-brick:nth-child(1),
+.mimic-streak-stage-pillar .mimic-streak-brick:nth-child(1),
+.mimic-streak-stage-tower .mimic-streak-brick:nth-child(1),
+.mimic-streak-stage-fortress .mimic-streak-brick:nth-child(1) {
+  grid-column: 2;
+}
+
+.mimic-streak-stage-pillar .mimic-streak-brick,
+.mimic-streak-stage-tower .mimic-streak-brick {
+  grid-column: 2;
+}
+
+.mimic-streak-stage-tower .mimic-streak-brick:nth-child(3n),
+.mimic-streak-stage-fortress .mimic-streak-brick:nth-child(4n) {
+  grid-column: span 2;
+}
+
+.mimic-streak-stage-fortress .mimic-streak-skyline {
+  width: 66px;
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.mimic-streak-stage-fortress .mimic-streak-brick:nth-child(odd) {
+  grid-column: span 2;
+}
+
+.mimic-streak-stage-fortress .mimic-streak-brick:nth-child(even) {
+  grid-column: span 3;
+}
+
+.mimic-streak-charged .mimic-streak-brick {
+  background: linear-gradient(135deg, #00a7a5, #7c5cff);
+}
+
+.mimic-streak-legendary .mimic-streak-brick {
+  background: linear-gradient(135deg, #c6a448, #fff1a8 45%, #111820 46%, #2d3540);
+  box-shadow: 0 0 12px rgb(198 164 72 / 0.55), 2px 2px 0 #101418;
+}
+
+.mimic-streak-spire {
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #101418;
+  background: #c6a448;
+  transform: translateX(-50%) rotate(45deg);
+  box-shadow: 2px 2px 0 #101418;
+}
+
+.mimic-streak-flag {
+  position: absolute;
+  top: -20px;
+  right: 4px;
+  width: 16px;
+  height: 12px;
+  border: 2px solid #101418;
+  background: #ef5b4f;
+  box-shadow: 2px 2px 0 #101418;
+  animation: mimicCapstoneDrop 680ms cubic-bezier(0.18, 0.89, 0.32, 1.18) both;
+}
+
+.mimic-streak-flag::before {
+  position: absolute;
+  right: 12px;
+  top: 9px;
+  width: 3px;
+  height: 28px;
+  border: 1px solid #101418;
+  background: #101418;
+  content: '';
+}
+
+.mimic-streak-scaffold {
+  position: absolute;
+  bottom: -2px;
+  width: 4px;
+  height: 68px;
+  border: 1px solid #101418;
+  background: #9f6b34;
+  box-shadow: 2px 2px 0 #101418;
+}
+
+.mimic-streak-scaffold-left {
+  left: -7px;
+  transform: rotate(-7deg);
+}
+
+.mimic-streak-scaffold-right {
+  right: -7px;
+  transform: rotate(7deg);
+}
+
+.mimic-streak-risk .mimic-streak-skyline {
+  animation: mimicTowerRisk 1.4s ease-in-out infinite;
+}
+
+.mimic-streak-risk .mimic-streak-brick:nth-child(2n) {
+  transform: translateX(2px) rotate(1deg);
+}
+
+.mimic-streak-risk .mimic-streak-brick:nth-child(3n) {
+  transform: translateX(-2px) rotate(-1deg);
+}
+
+.mimic-streak-risk::after {
+  position: absolute;
+  right: 16px;
+  top: 24px;
+  width: 20px;
+  height: 30px;
+  background: linear-gradient(115deg, transparent 0 42%, #101418 42% 49%, transparent 49% 62%, #101418 62% 69%, transparent 69%);
+  content: '';
+}
+
+.mimic-streak-dust {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 44px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgb(16 20 24 / 0.16);
+  transform: translateX(-50%);
+  animation: mimicDustPuff 640ms ease-out both;
 }
 
 .mimic-fade-in {
@@ -376,6 +556,68 @@ button:disabled {
   }
 }
 
+
+@keyframes mimicBrickDrop {
+  0% {
+    opacity: 0;
+    transform: translateY(-32px) scale(0.88);
+  }
+
+  68% {
+    opacity: 1;
+    transform: translateY(4px) scale(1.06);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes mimicCapstoneDrop {
+  0% {
+    opacity: 0;
+    transform: translateY(-34px) rotate(-8deg);
+  }
+
+  68% {
+    opacity: 1;
+    transform: translateY(4px) rotate(4deg);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+}
+
+@keyframes mimicDustPuff {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scaleX(0.4);
+  }
+
+  44% {
+    opacity: 0.45;
+    transform: translateX(-50%) scaleX(1.18);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) scaleX(1.45);
+  }
+}
+
+@keyframes mimicTowerRisk {
+  0%, 100% {
+    transform: rotate(-1.8deg);
+  }
+
+  50% {
+    transform: rotate(2deg) translateX(1px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mimic-popup-overlay,
   .mimic-popup-card,
@@ -388,7 +630,11 @@ button:disabled {
   .mimic-popup-content > *,
   .mimic-toast-card,
   .mimic-fade-in,
-  .mimic-glint::after {
+  .mimic-glint::after,
+  .mimic-streak-brick,
+  .mimic-streak-flag,
+  .mimic-streak-risk .mimic-streak-skyline,
+  .mimic-streak-dust {
     animation-duration: 1ms;
     animation-iteration-count: 1;
   }

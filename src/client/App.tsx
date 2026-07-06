@@ -27,7 +27,7 @@ const pages = [
 ] as const;
 
 type Page = (typeof pages)[number]['key'];
-type TourPlacement = 'top-left' | 'top-right' | 'center-left' | 'center-right' | 'bottom-left' | 'bottom-right' | 'bottom-center';
+type TourPlacement = 'top-left' | 'top-right' | 'center-left' | 'center-right' | 'lower-left' | 'lower-right' | 'bottom-left' | 'bottom-right' | 'bottom-center';
 type TourArrow = 'up' | 'down' | 'left' | 'right';
 
 type TourStep = {
@@ -37,6 +37,7 @@ type TourStep = {
   placement: TourPlacement;
   arrow: TourArrow;
   target: 'home-hook' | 'question-card' | 'investigation-card' | 'results-card' | 'history-card' | 'profile-card' | 'achievements-list' | 'leaderboard-list' | 'nav-tools';
+  scrollOffsetY?: number;
 };
 
 type SessionData = {
@@ -44,6 +45,7 @@ type SessionData = {
     username: string;
     streak: {
       current: number;
+      lastSuccessAt?: string;
     };
   };
   registered: boolean;
@@ -80,6 +82,8 @@ const tourPanelClass: Record<TourPlacement, string> = {
   'top-right': 'fixed inset-x-4 bottom-3 z-[60] mx-auto w-[calc(100vw-2rem)] max-w-sm sm:inset-x-auto sm:bottom-auto sm:right-6 sm:top-24 sm:w-[min(560px,calc(100vw-3rem))] sm:max-w-xl',
   'center-left': 'fixed inset-x-4 bottom-3 z-[60] mx-auto w-[calc(100vw-2rem)] max-w-sm sm:inset-x-auto sm:bottom-auto sm:left-6 sm:top-1/2 sm:w-[min(560px,calc(100vw-3rem))] sm:max-w-xl sm:-translate-y-1/2',
   'center-right': 'fixed inset-x-4 bottom-3 z-[60] mx-auto w-[calc(100vw-2rem)] max-w-sm sm:inset-x-auto sm:bottom-auto sm:right-6 sm:top-1/2 sm:w-[min(560px,calc(100vw-3rem))] sm:max-w-xl sm:-translate-y-1/2',
+  'lower-left': 'fixed inset-x-4 bottom-3 z-[60] mx-auto w-[calc(100vw-2rem)] max-w-sm sm:inset-x-auto sm:bottom-auto sm:left-6 sm:top-[64vh] sm:w-[min(560px,calc(100vw-3rem))] sm:max-w-xl sm:-translate-y-1/2',
+  'lower-right': 'fixed inset-x-4 bottom-3 z-[60] mx-auto w-[calc(100vw-2rem)] max-w-sm sm:inset-x-auto sm:bottom-auto sm:right-6 sm:top-[64vh] sm:w-[min(560px,calc(100vw-3rem))] sm:max-w-xl sm:-translate-y-1/2',
   'bottom-left': 'fixed inset-x-4 bottom-3 z-[60] mx-auto w-[calc(100vw-2rem)] max-w-sm sm:inset-x-auto sm:bottom-6 sm:left-6 sm:w-[min(560px,calc(100vw-3rem))] sm:max-w-xl',
   'bottom-right': 'fixed inset-x-4 bottom-3 z-[60] mx-auto w-[calc(100vw-2rem)] max-w-sm sm:inset-x-auto sm:bottom-6 sm:right-6 sm:w-[min(560px,calc(100vw-3rem))] sm:max-w-xl',
   'bottom-center': 'fixed inset-x-4 bottom-3 z-[60] mx-auto w-[calc(100vw-2rem)] max-w-sm sm:inset-x-4 sm:bottom-6 sm:max-w-xl',
@@ -89,7 +93,7 @@ const tourArrowGlyph: Record<TourArrow, string> = {
   up: '↑',
   down: '↓',
   left: '←',
-  right: '→',
+  right: '➜',
 };
 
 const tourArrowClass: Record<TourArrow, string> = {
@@ -111,6 +115,98 @@ const getVisibleTourTarget = (targetName: TourStep['target']): HTMLElement | nul
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+
+type SoundEffect = 'click' | 'nav' | 'select' | 'submit' | 'reveal' | 'tour' | 'close' | 'settings' | 'logout';
+
+type SoundTone = {
+  frequency: number;
+  endFrequency?: number;
+  start: number;
+  duration: number;
+  gain: number;
+  type?: OscillatorType;
+};
+
+const soundPatterns = (streak: number): Record<SoundEffect, SoundTone[]> => {
+  const streakPitch = 2 ** (Math.min(streak, 12) / 12);
+
+  return {
+    click: [{ frequency: 330 * streakPitch, endFrequency: 495 * streakPitch, start: 0, duration: 0.055, gain: 0.022, type: 'square' }],
+    nav: [
+      { frequency: 392, endFrequency: 494, start: 0, duration: 0.055, gain: 0.02, type: 'square' },
+      { frequency: 587, endFrequency: 659, start: 0.045, duration: 0.06, gain: 0.014, type: 'triangle' },
+    ],
+    select: [
+      { frequency: 220, endFrequency: 196, start: 0, duration: 0.035, gain: 0.028, type: 'square' },
+      { frequency: 660, endFrequency: 520, start: 0.012, duration: 0.04, gain: 0.01, type: 'triangle' },
+    ],
+    submit: [
+      { frequency: 330, endFrequency: 392, start: 0, duration: 0.075, gain: 0.022, type: 'triangle' },
+      { frequency: 440, endFrequency: 523, start: 0.07, duration: 0.08, gain: 0.02, type: 'triangle' },
+      { frequency: 660, endFrequency: 784, start: 0.145, duration: 0.12, gain: 0.018, type: 'sine' },
+    ],
+    reveal: [
+      { frequency: 262, start: 0, duration: 0.18, gain: 0.014, type: 'triangle' },
+      { frequency: 330, start: 0.018, duration: 0.18, gain: 0.012, type: 'triangle' },
+      { frequency: 392, start: 0.036, duration: 0.2, gain: 0.012, type: 'triangle' },
+      { frequency: 784, endFrequency: 988, start: 0.18, duration: 0.08, gain: 0.01, type: 'sine' },
+    ],
+    tour: [
+      { frequency: 523, endFrequency: 587, start: 0, duration: 0.045, gain: 0.014, type: 'sine' },
+      { frequency: 659, endFrequency: 698, start: 0.04, duration: 0.05, gain: 0.012, type: 'sine' },
+    ],
+    close: [{ frequency: 392, endFrequency: 247, start: 0, duration: 0.08, gain: 0.02, type: 'square' }],
+    settings: [
+      { frequency: 440, endFrequency: 554, start: 0, duration: 0.07, gain: 0.016, type: 'triangle' },
+      { frequency: 554, endFrequency: 660, start: 0.065, duration: 0.08, gain: 0.014, type: 'triangle' },
+    ],
+    logout: [
+      { frequency: 330, endFrequency: 262, start: 0, duration: 0.07, gain: 0.018, type: 'square' },
+      { frequency: 220, endFrequency: 165, start: 0.055, duration: 0.09, gain: 0.014, type: 'triangle' },
+    ],
+  };
+};
+
+const playMimicSound = (effect: SoundEffect, soundVolume: number, streak: number): void => {
+  if (soundVolume <= 0 || !window.AudioContext) return;
+
+  try {
+    const audio = new AudioContext();
+    const volume = clamp(soundVolume / 100, 0, 1);
+    const tones = soundPatterns(streak)[effect];
+    let latestStop = 0;
+
+    tones.forEach((tone) => {
+      const oscillator = audio.createOscillator();
+      const gain = audio.createGain();
+      const startAt = audio.currentTime + tone.start;
+      const stopAt = startAt + tone.duration;
+
+      oscillator.type = tone.type ?? 'square';
+      oscillator.frequency.setValueAtTime(tone.frequency, startAt);
+      if (tone.endFrequency) {
+        oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, tone.endFrequency), stopAt);
+      }
+
+      gain.gain.setValueAtTime(Math.max(0.0001, tone.gain * volume), startAt);
+      gain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
+      oscillator.connect(gain);
+      gain.connect(audio.destination);
+      oscillator.start(startAt);
+      oscillator.stop(stopAt);
+      latestStop = Math.max(latestStop, tone.start + tone.duration);
+    });
+
+    window.setTimeout(() => void audio.close(), Math.ceil((latestStop + 0.08) * 1000));
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+const getInitialSoundVolume = (): number => {
+  const stored = Number(localStorage.getItem('mimic-volume') ?? '45');
+  return Number.isFinite(stored) ? clamp(stored, 0, 100) : 45;
+};
 
 const getTourConnectorPoints = (popupRect: DOMRect, targetRect: TourHighlightRect) => {
   const popupCenter = {
@@ -169,6 +265,7 @@ const tourSteps: TourStep[] = [
     placement: 'bottom-right',
     arrow: 'up',
     target: 'question-card',
+    scrollOffsetY: 70,
   },
   {
     page: 'investigation',
@@ -190,7 +287,7 @@ const tourSteps: TourStep[] = [
     page: 'history',
     title: 'Review your calls',
     body: 'History keeps your previous investigations, your choices, the real labels, and whether each call was correct.',
-    placement: 'center-left',
+    placement: 'lower-left',
     arrow: 'right',
     target: 'history-card',
   },
@@ -198,7 +295,7 @@ const tourSteps: TourStep[] = [
     page: 'profile',
     title: 'Grow your profile',
     body: 'Profile shows score, level progress, your streak, saved record, and the public badge shelf where pinned achievements appear.',
-    placement: 'bottom-left',
+    placement: 'bottom-right',
     arrow: 'up',
     target: 'profile-card',
   },
@@ -209,6 +306,7 @@ const tourSteps: TourStep[] = [
     placement: 'top-left',
     arrow: 'down',
     target: 'achievements-list',
+    scrollOffsetY: 60,
   },
   {
     page: 'leaderboard',
@@ -233,16 +331,19 @@ export const App = () => {
   const [loading, setLoading] = useState(false);
   const [session, setSession] = useState<SessionData | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup');
   const [openSettings, setOpenSettings] = useState(false);
   const [refreshKey] = useState(0);
   const [darkTheme, setDarkTheme] = useState(getInitialDarkTheme);
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('mimic-sound') !== 'off');
+  const [soundVolume, setSoundVolume] = useState(getInitialSoundVolume);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [tourActive, setTourActive] = useState(false);
   const [tourIndex, setTourIndex] = useState(0);
   const [tourHighlightRect, setTourHighlightRect] = useState<TourHighlightRect | null>(null);
   const [tourConnector, setTourConnector] = useState<TourConnector | null>(null);
   const currentTourStep = tourSteps[tourIndex];
+  const audioStreak = session?.profile.streak.current ?? 0;
 
   useEffect(() => {
     applyDocumentTheme(darkTheme);
@@ -256,34 +357,32 @@ export const App = () => {
   }, [soundEnabled]);
 
   useEffect(() => {
-    if (!soundEnabled) return undefined;
+    localStorage.setItem('mimic-volume', `${soundVolume}`);
+  }, [soundVolume]);
 
-    const playClickSound = (event: PointerEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest('button')) return;
-      if (!window.AudioContext) return;
+  useEffect(() => {
+    if (!soundEnabled || soundVolume <= 0) return undefined;
 
-      try {
-        const audio = new AudioContext();
-        const oscillator = audio.createOscillator();
-        const gain = audio.createGain();
-        oscillator.type = 'square';
-        oscillator.frequency.setValueAtTime(440, audio.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(660, audio.currentTime + 0.04);
-        gain.gain.setValueAtTime(0.025, audio.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.06);
-        oscillator.connect(gain);
-        gain.connect(audio.destination);
-        oscillator.start();
-        oscillator.stop(audio.currentTime + 0.06);
-        window.setTimeout(() => void audio.close(), 90);
-      } catch (error) {
-        console.error(error);
-      }
+    const playButtonSound = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) return;
+      const button = event.target.closest('button');
+      if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+      const effect = (button.dataset.sound ?? 'click') as SoundEffect;
+      playMimicSound(effect, soundVolume, audioStreak);
     };
 
-    document.addEventListener('pointerup', playClickSound);
-    return () => document.removeEventListener('pointerup', playClickSound);
-  }, [soundEnabled]);
+    const playCustomSound = (event: Event) => {
+      const effect = event instanceof CustomEvent && typeof event.detail === 'string' ? event.detail as SoundEffect : 'click';
+      playMimicSound(effect, soundVolume, audioStreak);
+    };
+
+    document.addEventListener('pointerup', playButtonSound);
+    window.addEventListener('mimic:sound', playCustomSound);
+    return () => {
+      document.removeEventListener('pointerup', playButtonSound);
+      window.removeEventListener('mimic:sound', playCustomSound);
+    };
+  }, [audioStreak, soundEnabled, soundVolume]);
 
   useEffect(() => {
     if (!mobileNavOpen) return undefined;
@@ -378,15 +477,10 @@ export const App = () => {
 
       const previousBodyOverflow = document.body.style.overflow;
       const previousHtmlOverflow = document.documentElement.style.overflow;
-      const nav = document.querySelector('nav');
-      const navHeight = nav instanceof HTMLElement ? nav.getBoundingClientRect().height : 64;
       const rect = target.getBoundingClientRect();
-      const isMobile = window.matchMedia('(max-width: 639px)').matches;
-      const popupReserve = isMobile ? Math.min(280, window.innerHeight * 0.38) : 0;
-      const usableHeight = Math.max(220, window.innerHeight - navHeight - popupReserve);
-      const targetTop = rect.top + window.scrollY;
-      const targetCenterOffset = Math.max(12, (usableHeight - rect.height) / 2);
-      const top = Math.max(0, targetTop - navHeight - targetCenterOffset);
+      const targetCenterY = rect.top + window.scrollY + rect.height / 2;
+      const stepOffset = currentTourStep.scrollOffsetY ?? 0;
+      const top = Math.max(0, targetCenterY - window.innerHeight / 2 + stepOffset);
 
       document.body.style.overflow = 'auto';
       document.documentElement.style.overflow = 'auto';
@@ -538,7 +632,7 @@ export const App = () => {
   const activeContent = useMemo(() => {
     switch (page) {
       case 'question':
-        return <QuestionScreen refreshKey={refreshKey} />;
+        return <QuestionScreen refreshKey={refreshKey} onAnswered={loadSession} />;
       case 'investigation':
         return <DailyInvestigationView />;
       case 'results':
@@ -568,6 +662,7 @@ export const App = () => {
 
 
   const handleLogout = () => {
+    setAuthMode('login');
     setSession((current) => current ? { ...current, registered: false } : current);
     setPage('question');
     setOpenSettings(false);
@@ -578,6 +673,7 @@ export const App = () => {
   const handleSaveSettings = () => {
     localStorage.setItem('mimic-theme', darkTheme ? 'dark' : 'light');
     localStorage.setItem('mimic-sound', soundEnabled ? 'on' : 'off');
+    localStorage.setItem('mimic-volume', `${soundVolume}`);
     setOpenSettings(false);
     showToast('Settings saved.');
   };
@@ -616,6 +712,29 @@ export const App = () => {
     setPage(tourSteps[nextIndex]?.page ?? 'home');
   };
 
+  const renderTourOverlay = () => {
+    if (!tourHighlightRect) {
+      return <div className="mimic-popup-overlay fixed inset-0 z-40 bg-[#101418]/60 backdrop-blur-[1px]" />;
+    }
+
+    const padding = 10;
+    const top = Math.max(0, tourHighlightRect.top - padding);
+    const left = Math.max(0, tourHighlightRect.left - padding);
+    const right = Math.max(0, window.innerWidth - tourHighlightRect.left - tourHighlightRect.width - padding);
+    const bottom = Math.max(0, window.innerHeight - tourHighlightRect.top - tourHighlightRect.height - padding);
+    const middleTop = top;
+    const middleHeight = Math.min(window.innerHeight, tourHighlightRect.height + padding * 2);
+
+    return (
+      <>
+        <div className="mimic-popup-overlay mimic-tour-overlay-panel fixed left-0 right-0 top-0 z-40 bg-[#101418]/60 backdrop-blur-[1px]" style={{ height: top }} />
+        <div className="mimic-popup-overlay mimic-tour-overlay-panel fixed bottom-0 left-0 right-0 z-40 bg-[#101418]/60 backdrop-blur-[1px]" style={{ height: bottom }} />
+        <div className="mimic-popup-overlay mimic-tour-overlay-panel fixed left-0 z-40 bg-[#101418]/60 backdrop-blur-[1px]" style={{ top: middleTop, width: left, height: middleHeight }} />
+        <div className="mimic-popup-overlay mimic-tour-overlay-panel fixed right-0 z-40 bg-[#101418]/60 backdrop-blur-[1px]" style={{ top: middleTop, width: right, height: middleHeight }} />
+      </>
+    );
+  };
+
   const renderApp = () => (
     <>
       <div className="space-y-6 pt-20">
@@ -624,15 +743,16 @@ export const App = () => {
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
+              data-sound="nav"
               data-tour-target="nav-tools"
               className="grid h-9 w-9 place-items-center rounded-sm border-2 border-[#101418] bg-[#fbfcf8] text-lg font-black text-[#101418] shadow-[3px_3px_0_#101418] lg:hidden"
               aria-label="Open navigation"
             >
               ☰
             </button>
-            <div>
+            <div className="min-w-0 flex-1 lg:flex-none">
               <p className="text-xs font-black uppercase text-[#ef5b4f]">{pageLabels[page]}</p>
-              <p className="hidden text-xs font-semibold text-[#303943] sm:block">Daily prompt, voting, results, and testing tools.</p>
+              <p className="hidden text-xs font-semibold text-[#303943] sm:block">Daily prompt, voting, results, and player progress.</p>
             </div>
             <div className="hidden flex-wrap items-center gap-2 lg:flex" data-tour-target="nav-tools">
               {pages.map((item) => (
@@ -640,6 +760,7 @@ export const App = () => {
                   key={item.key}
                   type="button"
                   onClick={() => handleNavigate(item.key)}
+                  data-sound="nav"
                   className={`h-8 rounded-sm border-2 px-2.5 text-xs font-black uppercase transition ${
                     item.key === page
                       ? 'border-[#101418] bg-[#00a7a5] text-white shadow-[3px_3px_0_#101418]'
@@ -649,21 +770,29 @@ export const App = () => {
                   {item.label}
                 </button>
               ))}
-              <Button variant="secondary" onClick={() => setOpenSettings(true)} className="h-8 px-2.5 py-0 text-xs">
-                Settings
-              </Button>
-              <Button variant="secondary" onClick={startTour} className="h-8 px-2.5 py-0 text-xs">
+              <Button variant="secondary" onClick={startTour} data-sound="tour" className="h-8 px-2.5 py-0 text-xs">
                 Tour
               </Button>
               {session?.registered === true ? (
                 <button
                   type="button"
                   onClick={handleLogout}
+                  data-sound="logout"
                   className="h-8 rounded-sm border-2 border-[#101418] bg-[#ef5b4f] px-2.5 text-xs font-black uppercase text-white shadow-[3px_3px_0_#101418] transition hover:bg-[#d94a40]"
                 >
                   Logout
                 </button>
               ) : null}
+              <button
+                type="button"
+                onClick={() => setOpenSettings(true)}
+                data-sound="settings"
+                className="grid h-8 w-8 place-items-center rounded-sm border-2 border-[#101418] bg-[#fbfcf8] text-base font-black text-[#101418] shadow-[3px_3px_0_#101418] transition hover:bg-[#dff6f4]"
+                aria-label="Open settings"
+                title="Settings"
+              >
+                ⚙
+              </button>
             </div>
           </div>
         </nav>
@@ -675,13 +804,27 @@ export const App = () => {
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileNavOpen(false);
+                    setOpenSettings(true);
+                  }}
+                  data-sound="settings"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-sm border-2 border-[#101418] bg-[#fbfcf8] text-base font-black text-[#101418] shadow-[3px_3px_0_#101418] transition hover:bg-[#dff6f4]"
+                  aria-label="Open settings"
+                  title="Settings"
+                >
+                  ⚙
+                </button>
+                <div className="min-w-0 flex-1">
                   <p className="text-xs font-black uppercase text-[#ef5b4f]">Mimic menu</p>
                   <h2 className="mt-1 text-2xl font-black text-[#101418]">{pageLabels[page]}</h2>
                 </div>
                 <button
                   type="button"
                   onClick={() => setMobileNavOpen(false)}
+                  data-sound="close"
                   className="grid h-9 w-9 shrink-0 place-items-center rounded-sm border-2 border-[#101418] bg-[#ef5b4f] text-lg font-black text-white shadow-[3px_3px_0_#101418]"
                   aria-label="Close navigation"
                 >
@@ -694,6 +837,7 @@ export const App = () => {
                     key={item.key}
                     type="button"
                     onClick={() => handleNavigate(item.key)}
+                    data-sound="nav"
                     className={`h-10 rounded-sm border-2 px-3 text-left text-xs font-black uppercase transition ${
                       item.key === page
                         ? 'border-[#101418] bg-[#00a7a5] text-white shadow-[3px_3px_0_#101418]'
@@ -705,16 +849,14 @@ export const App = () => {
                 ))}
               </div>
               <div className="mt-4 grid gap-1.5">
-                <Button variant="secondary" onClick={() => { setMobileNavOpen(false); setOpenSettings(true); }} className="h-10 w-full py-0 text-xs">
-                  Settings
-                </Button>
-                <Button variant="secondary" onClick={() => { setMobileNavOpen(false); startTour(); }} className="h-10 w-full py-0 text-xs">
+                <Button variant="secondary" onClick={() => { setMobileNavOpen(false); startTour(); }} data-sound="tour" className="h-10 w-full py-0 text-xs">
                   Tour
                 </Button>
                 {session?.registered === true ? (
                   <button
                     type="button"
                     onClick={handleLogout}
+                    data-sound="logout"
                     className="h-10 w-full rounded-sm border-2 border-[#101418] bg-[#ef5b4f] px-4 text-xs font-black uppercase text-white shadow-[3px_3px_0_#101418] transition hover:bg-[#d94a40]"
                   >
                     Logout
@@ -744,7 +886,7 @@ export const App = () => {
               <p className="text-xs font-black uppercase text-[#ef5b4f]">Settings</p>
               <h2 className="mt-2 text-2xl font-black text-[#101418]">Game settings</h2>
             </div>
-            <Button variant="ghost" onClick={() => setOpenSettings(false)}>
+            <Button variant="ghost" onClick={() => setOpenSettings(false)} data-sound="close">
               Close
             </Button>
           </div>
@@ -762,7 +904,26 @@ export const App = () => {
             </span>
             <input type="checkbox" checked={soundEnabled} onChange={(event) => setSoundEnabled(event.target.checked)} className="h-5 w-5 accent-[#00a7a5]" />
           </label>
-          <Button onClick={handleSaveSettings} className="w-full">
+          <label className="block rounded-sm border-2 border-[#101418] bg-[#fbfcf8] p-4">
+            <span className="flex items-center justify-between gap-4">
+              <span>
+                <span className="block font-black text-[#101418]">Volume</span>
+                <span className="text-sm font-semibold text-[#303943]">Set click sound volume.</span>
+              </span>
+              <span className="font-mono text-sm font-black text-[#101418]">{soundVolume}%</span>
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={soundVolume}
+              onChange={(event) => setSoundVolume(Number(event.target.value))}
+              className="mt-4 w-full accent-[#00a7a5]"
+              aria-label="Sound effect volume"
+            />
+          </label>
+          <Button onClick={handleSaveSettings} data-sound="settings" className="w-full">
             Save settings
           </Button>
         </div>
@@ -770,7 +931,7 @@ export const App = () => {
 
       {tourActive && currentTourStep ? (
         <>
-          <div className="mimic-popup-overlay fixed inset-0 z-40 bg-[#101418]/60 backdrop-blur-[1px]" />
+          {renderTourOverlay()}
           {tourHighlightRect ? (
             <div
               className="mimic-tour-highlight pointer-events-none fixed z-[55] hidden animate-pulse rounded-sm border-4 border-[#fff9df] shadow-[0_0_0_4px_#101418,6px_6px_0_#ef5b4f] sm:block"
@@ -785,7 +946,7 @@ export const App = () => {
           ) : null}
           {tourConnector ? (
             <div
-              className="mimic-tour-connector pointer-events-none fixed z-[56] hidden h-1 origin-left rounded-full bg-[#fff9df] shadow-[0_0_0_2px_#101418] sm:block"
+              className="mimic-tour-connector pointer-events-none fixed z-[59] hidden h-1 origin-left rounded-full bg-[#fff9df] shadow-[0_0_0_2px_#101418] sm:block"
               style={{
                 top: tourConnector.top,
                 left: tourConnector.left,
@@ -821,6 +982,7 @@ export const App = () => {
                 <button
                   type="button"
                   onClick={closeTour}
+                  data-sound="close"
                   className="grid h-9 w-9 shrink-0 place-items-center rounded-sm border-2 border-[#101418] bg-[#ef5b4f] text-lg font-black text-white shadow-[3px_3px_0_#101418]"
                   aria-label="Close tour"
                 >
@@ -829,14 +991,14 @@ export const App = () => {
               </div>
               <p className="mt-3 text-sm font-semibold leading-6 text-[#303943]">{currentTourStep.body}</p>
               <div className="mt-4 flex flex-col gap-3 sm:mt-5 sm:flex-row sm:items-center sm:justify-between">
-                <button type="button" onClick={closeTour} className="text-sm font-black uppercase text-[#66707a]">
+                <button type="button" onClick={closeTour} data-sound="close" className="text-sm font-black uppercase text-[#66707a]">
                   Skip tour
                 </button>
                 <div className="grid grid-cols-2 gap-2 sm:flex">
-                  <Button variant="secondary" disabled={tourIndex === 0} onClick={previousTourStep}>
+                  <Button variant="secondary" disabled={tourIndex === 0} onClick={previousTourStep} data-sound="tour">
                     Back
                   </Button>
-                  <Button onClick={nextTourStep}>
+                  <Button onClick={nextTourStep} data-sound="tour">
                     {tourIndex >= tourSteps.length - 1 ? 'Finish' : 'Next'}
                   </Button>
                 </div>
@@ -849,14 +1011,14 @@ export const App = () => {
   );
 
   return (
-    <Layout currentStreak={session?.profile.streak.current ?? 0} darkTheme={darkTheme} fixedNavOffset={session?.registered === true}>
+    <Layout currentStreak={session?.profile.streak.current ?? 0} streakLastSuccessAt={session?.profile.streak.lastSuccessAt} darkTheme={darkTheme} fixedNavOffset={session?.registered === true}>
       {sessionLoading ? (
         <div className="space-y-6">
           <Skeleton className="h-28 w-full rounded-lg" />
           <Skeleton className="h-[520px] w-full rounded-lg" />
         </div>
       ) : session && !session.registered ? (
-        <LoginView username={session.displayName || session.profile.username} onComplete={loadSession} />
+        <LoginView username={session.displayName || session.profile.username} mode={authMode} onComplete={loadSession} />
       ) : (
         renderApp()
       )}

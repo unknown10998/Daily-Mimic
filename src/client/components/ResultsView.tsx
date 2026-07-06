@@ -24,6 +24,7 @@ type ResultsPayload = {
       heatmap: {
         human: string[];
         ai: string[];
+        hybrid: string[];
       };
     };
     answers: { id: string; text: string; authorType: 'human' | 'ai' | 'hybrid'; voteCount: number; correctVoteCount: number }[];
@@ -142,18 +143,27 @@ export const ResultsView = () => {
       </div>
 
       <Card className="space-y-4">
-        <p className="text-xs font-black uppercase text-[#66707a]">Humanity heatmap</p>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <p className="text-xs font-black uppercase text-[#66707a]">Humanity heatmap</p>
+          <p className="mt-1 text-sm font-semibold text-[#303943]">Signal words come from player reasoning first, then from the answer text when clues are still sparse.</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
           <div>
             <p className="text-sm font-black uppercase text-[#ef5b4f]">Human signals</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {(payload.insights?.heatmap.human ?? []).map((word) => <Badge key={word} tone="warm">{word}</Badge>)}
+            <div className="mt-2 flex min-h-10 flex-wrap gap-2">
+              {(payload.insights?.heatmap.human ?? []).length > 0 ? (payload.insights?.heatmap.human ?? []).map((word) => <Badge key={word} tone="warm">{word}</Badge>) : <span className="text-sm font-semibold text-[#66707a]">Waiting for signals</span>}
             </div>
           </div>
           <div>
             <p className="text-sm font-black uppercase text-[#00a7a5]">AI signals</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {(payload.insights?.heatmap.ai ?? []).map((word) => <Badge key={word} tone="soft">{word}</Badge>)}
+            <div className="mt-2 flex min-h-10 flex-wrap gap-2">
+              {(payload.insights?.heatmap.ai ?? []).length > 0 ? (payload.insights?.heatmap.ai ?? []).map((word) => <Badge key={word} tone="soft">{word}</Badge>) : <span className="text-sm font-semibold text-[#66707a]">Waiting for signals</span>}
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-black uppercase text-[#c6a448]">Hybrid signals</p>
+            <div className="mt-2 flex min-h-10 flex-wrap gap-2">
+              {(payload.insights?.heatmap.hybrid ?? []).length > 0 ? (payload.insights?.heatmap.hybrid ?? []).map((word) => <Badge key={word} tone="warm">{word}</Badge>) : <span className="text-sm font-semibold text-[#66707a]">Waiting for signals</span>}
             </div>
           </div>
         </div>

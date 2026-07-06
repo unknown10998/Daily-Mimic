@@ -80,6 +80,7 @@ type ResultsInsight = {
   heatmap: {
     human: string[];
     ai: string[];
+    hybrid: string[];
   };
 };
 
@@ -437,7 +438,7 @@ const getDifficulty = (accuracy: number): string => {
 };
 
 const topWords = (texts: string[]): string[] => {
-  const skip = new Set(['this', 'that', 'with', 'from', 'they', 'their', 'because', 'answer', 'felt', 'like', 'just', 'really', 'would', 'there', 'were', 'more']);
+  const skip = new Set(['this', 'that', 'with', 'from', 'they', 'their', 'because', 'answer', 'answers', 'felt', 'feel', 'like', 'just', 'really', 'would', 'there', 'were', 'more', 'about', 'could', 'probably', 'thing', 'things', 'what', 'when', 'then', 'than', 'have', 'into']);
   const counts = new Map<string, number>();
   texts
     .join(' ')
@@ -449,19 +450,30 @@ const topWords = (texts: string[]): string[] => {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([word]) => word);
 };
 
+const heatmapWordsForType = (answers: Answer[], reasonedVotes: Vote[], answersById: Map<string, Answer>, authorType: Answer['authorType']): string[] => {
+  const reasoningWords = topWords(reasonedVotes
+    .filter((vote) => answersById.get(vote.answerId)?.authorType === authorType)
+    .flatMap((vote) => vote.reasoning ? [vote.reasoning] : []));
+
+  if (reasoningWords.length > 0) return reasoningWords;
+
+  return topWords(answers
+    .filter((answer) => answer.authorType === authorType)
+    .map((answer) => answer.text));
+};
+
 const buildResultsInsight = (answers: Answer[], votes: Vote[], accuracy: number): ResultsInsight => {
   const answersById = new Map(answers.map((answer) => [answer.id, answer]));
   const reasonedVotes = votes.filter((vote) => vote.reasoning);
   const communityClues = reasonedVotes.slice(-5).map((vote) => vote.reasoning).filter((reasoning): reasoning is string => typeof reasoning === 'string' && reasoning.length > 0);
-  const humanReasonings = reasonedVotes.filter((vote) => answersById.get(vote.answerId)?.authorType === 'human').flatMap((vote) => vote.reasoning ? [vote.reasoning] : []);
-  const aiReasonings = reasonedVotes.filter((vote) => answersById.get(vote.answerId)?.authorType === 'ai').flatMap((vote) => vote.reasoning ? [vote.reasoning] : []);
 
   return {
     difficulty: getDifficulty(accuracy),
     communityClues,
     heatmap: {
-      human: topWords(humanReasonings),
-      ai: topWords(aiReasonings),
+      human: heatmapWordsForType(answers, reasonedVotes, answersById, 'human'),
+      ai: heatmapWordsForType(answers, reasonedVotes, answersById, 'ai'),
+      hybrid: heatmapWordsForType(answers, reasonedVotes, answersById, 'hybrid'),
     },
   };
 };
@@ -596,7 +608,7 @@ game.post('/answer', async (c) => {
     gameEngine.syncAchievements(player);
     await redisStorage.savePlayerProfile(player);
 
-    return c.json<ApiSuccessResponse<{ answer: Answer }>>(respondOk({ answer }));
+    return c.json<ApiSuccessResponse<{ answer: Answer; profile: PlayerProfile }>>(respondOk({ answer, profile: player }));
   } catch (error) {
     return c.json<ApiErrorResponse>(respondError((error as Error).message), 400);
   }

@@ -32,6 +32,7 @@ const label = (value: HistoryItem['selected']) => {
 export const HistoryView = () => {
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [collapsedDays, setCollapsedDays] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -64,6 +65,13 @@ export const HistoryView = () => {
     }, {});
   }, [items]);
 
+  const toggleDay = (groupKey: string) => {
+    setCollapsedDays((current) => ({
+      ...current,
+      [groupKey]: current[groupKey] !== true,
+    }));
+  };
+
   if (loading) {
     return <Skeleton className="h-[520px] w-full rounded-lg" />;
   }
@@ -91,24 +99,43 @@ export const HistoryView = () => {
           const first = groupItems[0];
           if (!first) return null;
 
+          const collapsed = collapsedDays[groupKey] === true;
+
           return (
             <Card key={groupKey} className="space-y-4 bg-[#fbfcf8] p-6">
-              <div>
-                <p className="text-xs font-black uppercase text-[#ef5b4f]">{formatDisplayDate(first.questionDate)}</p>
-                <h3 className="mt-2 text-2xl font-black text-[#101418]">{first.questionText}</h3>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <button
+                  type="button"
+                  onClick={() => toggleDay(groupKey)}
+                  className="group min-w-0 text-left"
+                  aria-expanded={!collapsed}
+                >
+                  <p className="text-xs font-black uppercase text-[#ef5b4f]">{formatDisplayDate(first.questionDate)}</p>
+                  <h3 className="mt-2 text-2xl font-black text-[#101418] group-hover:text-[#00a7a5]">{first.questionText}</h3>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleDay(groupKey)}
+                  className="shrink-0 rounded-sm border-2 border-[#101418] bg-white px-3 py-2 text-xs font-black uppercase text-[#101418] shadow-[3px_3px_0_#101418] transition hover:bg-[#dff6f4]"
+                  aria-expanded={!collapsed}
+                >
+                  {collapsed ? `Expand ${groupItems.length}` : 'Collapse'}
+                </button>
               </div>
 
-              <div className="grid gap-4">
-                {groupItems.map((item) => (
-                  <article key={`${item.answerId}:${item.submittedAt}`} className="rounded-sm border-2 border-[#101418] bg-white p-4 shadow-[3px_3px_0_#101418]">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <Badge tone={item.correct ? 'soft' : 'warm'}>{item.correct ? 'Correct' : 'Wrong'}</Badge>
-                      <p className="text-sm font-black text-[#303943]">You chose {label(item.selected)} · Actual {label(item.actual)}</p>
-                    </div>
-                    <p className="mt-3 text-sm font-semibold leading-7 text-[#101418]">{item.answerText}</p>
-                  </article>
-                ))}
-              </div>
+              {collapsed ? null : (
+                <div className="grid gap-4">
+                  {groupItems.map((item) => (
+                    <article key={`${item.answerId}:${item.submittedAt}`} className="rounded-sm border-2 border-[#101418] bg-white p-4 shadow-[3px_3px_0_#101418]">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <Badge tone={item.correct ? 'soft' : 'warm'}>{item.correct ? 'Correct' : 'Wrong'}</Badge>
+                        <p className="text-sm font-black text-[#303943]">You chose {label(item.selected)} · Actual {label(item.actual)}</p>
+                      </div>
+                      <p className="mt-3 text-sm font-semibold leading-7 text-[#101418]">{item.answerText}</p>
+                    </article>
+                  ))}
+                </div>
+              )}
             </Card>
           );
         })

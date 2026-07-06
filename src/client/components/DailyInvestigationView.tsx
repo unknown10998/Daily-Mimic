@@ -177,6 +177,7 @@ export const DailyInvestigationView = () => {
 
       setSubmitted(true);
       setSubmitSummary({ correctVotes, totalVotes, playerXp, authorBonusXp, streakBonusXp, hardReadBonusXp, perfectInvestigationBonusXp, reasoningBonusXp, confidencePenaltyXp });
+      window.dispatchEvent(new CustomEvent('mimic:sound', { detail: 'reveal' }));
       showToast('Investigation saved. Results revealed below.');
     } catch (error) {
       console.error(error);
@@ -276,7 +277,7 @@ export const DailyInvestigationView = () => {
         </div>
       )}
 
-      <Button disabled={submitted || votableResponses.length === 0 || completed < votableResponses.length} loading={submitting} className="w-full" onClick={handleSubmit}>
+      <Button disabled={submitted || votableResponses.length === 0 || completed < votableResponses.length} loading={submitting} className="w-full" onClick={handleSubmit} data-sound="submit">
         Finish investigation
       </Button>
     </section>

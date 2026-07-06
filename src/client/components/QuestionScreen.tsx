@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { showToast } from '@devvit/web/client';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
+import { StreakTower } from './Layout';
 import { Skeleton } from './ui/Skeleton';
 import { formatDisplayDate } from '../utils/date';
 
@@ -27,6 +28,18 @@ type QuestionPayload = {
   };
 };
 
+type AnswerSubmitPayload = {
+  status: 'ok';
+  data: {
+    answer: SubmittedAnswer;
+    profile: {
+      streak: {
+        current: number;
+      };
+    };
+  };
+};
+
 type ApiErrorPayload = {
   status: 'error';
   message: string;
@@ -34,6 +47,7 @@ type ApiErrorPayload = {
 
 type QuestionScreenProps = {
   refreshKey: number;
+  onAnswered?: () => void;
 };
 
 const MIN_ANSWER_LENGTH = 250;
@@ -47,13 +61,14 @@ const tiles = [
   { letter: 'C', tone: 'bg-[#00a7a5]' },
 ];
 
-export const QuestionScreen = ({ refreshKey }: QuestionScreenProps) => {
+export const QuestionScreen = ({ refreshKey, onAnswered }: QuestionScreenProps) => {
   const [question, setQuestion] = useState<Question | null>(null);
   const [phase, setPhase] = useState('loading');
   const [answer, setAnswer] = useState('');
   const [submittedAnswer, setSubmittedAnswer] = useState<SubmittedAnswer | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [celebrationStreak, setCelebrationStreak] = useState<number | null>(null);
   const trimmedAnswerLength = answer.trim().length;
   const answerProgress = Math.min(100, Math.round((trimmedAnswerLength / MIN_ANSWER_LENGTH) * 100));
 
@@ -93,15 +108,18 @@ export const QuestionScreen = ({ refreshKey }: QuestionScreenProps) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ questionId: question.id, answerText: answer.trim() }),
       });
-      const result = await response.json();
+      const result = (await response.json()) as AnswerSubmitPayload | ApiErrorPayload;
 
       if (!response.ok || result.status !== 'ok') {
-        showToast(result.message || 'Unable to submit answer.');
+        showToast(result.status === 'error' ? result.message : 'Unable to submit answer.');
         return;
       }
 
       setAnswer('');
       setSubmittedAnswer(result.data.answer);
+      setCelebrationStreak(result.data.profile.streak.current);
+      window.dispatchEvent(new CustomEvent('mimic:sound', { detail: 'submit' }));
+      onAnswered?.();
       showToast('Answer submitted for tomorrow’s investigation.');
     } catch (error) {
       console.error(error);
@@ -116,6 +134,7 @@ export const QuestionScreen = ({ refreshKey }: QuestionScreenProps) => {
   }
 
   return (
+    <>
     <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <Card className="space-y-6 bg-[#fbfcf8]" data-tour-target="question-card">
         <div className="flex flex-wrap items-center gap-2">
@@ -174,7 +193,7 @@ export const QuestionScreen = ({ refreshKey }: QuestionScreenProps) => {
               </div>
             </div>
 
-            <Button disabled={!question || trimmedAnswerLength < MIN_ANSWER_LENGTH} loading={submitting} onClick={handleSubmit}>
+            <Button disabled={!question || trimmedAnswerLength < MIN_ANSWER_LENGTH} loading={submitting} onClick={handleSubmit} data-sound="select">
               {trimmedAnswerLength >= MIN_ANSWER_LENGTH ? 'Submit for tomorrow' : 'Keep writing'}
             </Button>
           </>
@@ -201,5 +220,30 @@ export const QuestionScreen = ({ refreshKey }: QuestionScreenProps) => {
         ))}
       </div>
     </section>
+
+    {celebrationStreak !== null ? (
+      <div className="mimic-popup-overlay fixed inset-0 z-[70] grid place-items-center bg-[#101418]/70 px-4 backdrop-blur-sm" onClick={() => setCelebrationStreak(null)}>
+        <div
+          className="mimic-popup-content w-full max-w-md rounded-sm border-4 border-[#101418] bg-[#fff9df] p-6 text-center shadow-[8px_8px_0_#101418]"
+          onClick={(event) => event.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Streak brick placed"
+        >
+          <p className="text-xs font-black uppercase text-[#ef5b4f]">Brick placed</p>
+          <div className="mt-4 flex justify-center">
+            <StreakTower streak={celebrationStreak} atRisk={false} />
+          </div>
+          <h3 className="mt-4 text-3xl font-black text-[#101418]">{celebrationStreak} day streak</h3>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#303943]">
+            Your answer is locked in for tomorrow’s investigation. The tower gets one brick stronger.
+          </p>
+          <Button className="mt-5 w-full" onClick={() => setCelebrationStreak(null)} data-sound="close">
+            Nice
+          </Button>
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 };

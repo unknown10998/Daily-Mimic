@@ -59,6 +59,7 @@ export const ResponseCard = ({ text, selected, actual, authorDisplayName, reveal
               key={option}
               type="button"
               disabled={reveal || disabled}
+              data-sound="select"
               onClick={() => onSelect(option)}
               className={`rounded-sm border-2 px-3 py-2 text-sm font-black uppercase transition ${
                 active
@@ -87,6 +88,7 @@ export const ResponseCard = ({ text, selected, actual, authorDisplayName, reveal
                   key={option}
                   type="button"
                   onClick={() => onConfidenceChange?.(option)}
+                  data-sound="select"
                   className={`rounded-sm border-2 px-3 py-2 text-xs font-black uppercase ${confidence === option ? 'border-[#101418] bg-[#c6a448] text-[#101418] shadow-[3px_3px_0_#101418]' : 'border-[#101418] bg-white text-[#101418] hover:bg-[#fff9df]'}`}
                 >
                   {option}

@@ -5,10 +5,11 @@ import { Card } from './ui/Card';
 
 type LoginViewProps = {
   username: string;
+  mode?: 'signup' | 'login';
   onComplete: () => void;
 };
 
-export const LoginView = ({ username, onComplete }: LoginViewProps) => {
+export const LoginView = ({ username, mode = 'signup', onComplete }: LoginViewProps) => {
   const [displayName, setDisplayName] = useState(username);
   const [saving, setSaving] = useState(false);
 
@@ -28,6 +29,7 @@ export const LoginView = ({ username, onComplete }: LoginViewProps) => {
         return;
       }
 
+      window.dispatchEvent(new CustomEvent('mimic:sound', { detail: 'submit' }));
       showToast('You are in. Today’s prompt is waiting.');
       onComplete();
     } catch (error) {
@@ -36,6 +38,14 @@ export const LoginView = ({ username, onComplete }: LoginViewProps) => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const returningPlayer = mode === 'login';
+
+  const handleLogin = () => {
+    window.dispatchEvent(new CustomEvent('mimic:sound', { detail: 'settings' }));
+    showToast('Welcome back. Loading your Mimic profile.');
+    onComplete();
   };
 
   return (
@@ -56,7 +66,7 @@ export const LoginView = ({ username, onComplete }: LoginViewProps) => {
 
         <div>
           <p className="text-xs font-black uppercase text-[#ef5b4f]">Daily Reddit game</p>
-          <h2 className="mt-3 text-4xl font-black leading-tight text-[#101418]">Write today. Hunt the AI tomorrow.</h2>
+          <h2 className="mt-3 text-4xl font-black leading-tight text-[#101418]">{returningPlayer ? 'Welcome back to the hunt.' : 'Write today. Hunt the AI tomorrow.'}</h2>
           <p className="mt-3 text-sm font-semibold leading-6 text-[#303943]">
             Mimic Daily is a Reddit-native guessing game: players write real answers, vote on which anonymous replies were human or AI, and train tomorrow’s AI by explaining what gave it away.
           </p>
@@ -76,24 +86,27 @@ export const LoginView = ({ username, onComplete }: LoginViewProps) => {
           <p className="mt-2 text-2xl font-black text-[#101418]">u/{username}</p>
         </div>
 
-        <label className="block space-y-2">
-          <span className="text-sm font-black uppercase text-[#101418]">Display name</span>
-          <input
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-            maxLength={32}
-            className="w-full rounded-sm border-2 border-[#101418] bg-white px-4 py-3 font-semibold text-[#101418] outline-none focus:bg-[#fff9df] focus:shadow-[4px_4px_0_#c6a448]"
-          />
-        </label>
+        {returningPlayer ? null : (
+          <label className="block space-y-2">
+            <span className="text-sm font-black uppercase text-[#101418]">Display name</span>
+            <input
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              maxLength={32}
+              className="w-full rounded-sm border-2 border-[#101418] bg-white px-4 py-3 font-semibold text-[#101418] outline-none focus:bg-[#fff9df] focus:shadow-[4px_4px_0_#c6a448]"
+            />
+          </label>
+        )}
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Button loading={saving} onClick={handleSignup}>
-            Sign up
-          </Button>
-          <Button variant="secondary" loading={saving} onClick={handleSignup}>
+        {returningPlayer ? (
+          <Button loading={saving} onClick={handleLogin} data-sound="settings">
             Log in
           </Button>
-        </div>
+        ) : (
+          <Button loading={saving} onClick={handleSignup} data-sound="submit">
+            Sign up
+          </Button>
+        )}
       </Card>
     </div>
   );
